@@ -104,7 +104,7 @@
                       collect `((= ,var ,chars) ,@body)))))
     (t `(case ,var ,@cases))))
 
-(defmacro vector-case (vec-and-options &body cases)
+(defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key (start 0) case-insensitive)
       (ensure-cons vec-and-options)
     (once-only (vec start)
@@ -157,8 +157,7 @@
                                                    `(progn ,@(cdr (car cases))
                                                            (go ,end-tag))
                                                    `(go ,otherwise)))
-                                            (typed-case (locally (declare (optimize (speed 3) (safety 0)))
-                                                          (aref ,vec (+ ,(1+ i) ,start)))
+                                            (typed-case ,elem-var
                                               ,@next-case
                                               (otherwise (go ,otherwise))))
                                           res-cases))
@@ -172,25 +171,22 @@
                                                res-cases)))))
                                   map)
                          res-cases)))))
-          (with-gensyms (vector-case-block)
-            (let ((otherwise-case nil))
-              (when (eq (caar (last cases)) 'otherwise)
-                (setq otherwise-case (car (last cases))
-                      cases (butlast cases)))
-              `(locally
-                   (declare (type fixnum ,start))
-                 (unless (<= (length ,vec) ,start)
-                   (block ,vector-case-block
-                     (tagbody
-                        (return-from ,vector-case-block
-                          (typed-case (locally (declare (optimize (speed 3) (safety 0)))
-                                        (aref ,vec ,start))
-                            ,@(build-case 0 cases vec)
-                            (otherwise (go ,otherwise))))
-                        ,otherwise
-                        ,(when otherwise-case
-                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case))))
-                        ,end-tag)))))))))))
+          (let ((otherwise-case nil))
+            (when (eq (caar (last cases)) 'otherwise)
+              (setq otherwise-case (car (last cases))
+                    cases (butlast cases)))
+            `(locally
+                 (declare (type fixnum ,start))
+               (unless (<= (length ,vec) ,start)
+                 (tagbody
+                    (typed-case ,elem-var
+                      ,@(build-case 0 cases vec)
+                      (otherwise (go ,otherwise)))
+                    (go ,end-tag)
+                    ,otherwise
+                    ,@(when otherwise-case
+                        (cdr otherwise-case))
+                    ,end-tag)))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -342,14 +338,14 @@
                                 collect `(,vec))))
                     (match-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case (,',data :start ,',p)
+                      `(vector-case ,',elem (,',data :start ,',p)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
                                        '((otherwise (error 'match-failed)))))))
                     (match-i-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case (,',data :start ,',p :case-insensitive t)
+                      `(vector-case ,',elem (,',data :start ,',p :case-insensitive t)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
@@ -458,7 +454,7 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case (,',data :start ,',p)
+                      `(vector-case ,',elem (,',data :start ,',p)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
@@ -472,7 +468,7 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case (,',data :start ,',p :case-insensitive t)
+                      `(vector-case ,',elem (,',data :start ,',p :case-insensitive t)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
