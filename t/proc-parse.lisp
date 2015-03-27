@@ -34,9 +34,10 @@
          ("Sat" (match? "urday"))))
       7))
 
-(let ((octets (map '(simple-array (unsigned-byte 8) (*)) #'char-code "Tuesday")))
-  (is (with-vector-parsing (octets)
-        (match #(84 117 101)))
+(let ((data (babel:string-to-octets "Tuesday")))
+  (declare (type (simple-array (unsigned-byte 8) (*)) data))
+  (is (with-vector-parsing (data)
+        (match "Tue"))
       3))
 
 (finalize)

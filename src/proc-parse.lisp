@@ -47,21 +47,31 @@
     (once-only (vec start)
       (let ((otherwise (gensym "otherwise")))
         (labels ((case-candidates (el)
-                   (if (and case-insensitive
-                            (characterp el))
-                       (cond
-                         ((char<= #\a el #\z)
-                          `(,el
-                            ,(code-char
-                              (- (char-code el)
-                                 #.(- (char-code #\a) (char-code #\A))))))
-                         ((char<= #\A el #\Z)
-                          `(,el
-                            ,(code-char
-                              (+ (char-code el)
-                                 #.(- (char-code #\a) (char-code #\A))))))
-                         (t el))
-                       el))
+                   (cond
+                     ((not case-insensitive) el)
+                     ((characterp el)
+                      (cond
+                        ((char<= #\a el #\z)
+                         `(,el
+                           ,(code-char
+                             (- (char-code el)
+                                #.(- (char-code #\a) (char-code #\A))))))
+                        ((char<= #\A el #\Z)
+                         `(,el
+                           ,(code-char
+                             (+ (char-code el)
+                                #.(- (char-code #\a) (char-code #\A))))))
+                        (t el)))
+                     ((typep el '(unsigned-byte 8))
+                      (cond
+                        ((<= #.(char-code #\a) el #.(char-code #\z))
+                         `(,el
+                           ,(- el #.(- (char-code #\a) (char-code #\A)))))
+                        ((<= #.(char-code #\A) el #.(char-code #\Z))
+                         `(,el
+                           ,(+ el #.(- (char-code #\a) (char-code #\A)))))
+                        (t el)))
+                     (t el)))
                  (build-case (i cases vec end)
                    (when cases
                      (let ((map (make-hash-table)))
@@ -125,7 +135,7 @@
     ((constantp var) (type-of var))
     #+(or sbcl openmcl cmu allegro)
     ((and (symbolp var)
-          (assoc 'type (nth-value 2 (variable-information var env)))))
+          (cdr (assoc 'type (nth-value 2 (variable-information var env))))))
     ((and (listp var)
           (eq (car var) 'the)
           (cadr var)))))
@@ -136,16 +146,72 @@
 (defun variable-type* (var &optional env)
   (let ((type (variable-type var env)))
     (cond
+      ((null type) nil)
       ((subtypep type 'string) 'string)
       ((subtypep type 'octets) 'octets))))
 
+(defun check-skip-elems (elems)
+  (or (every (lambda (elem)
+               (or (characterp elem)
+                   (and (consp elem)
+                        (null (cddr elem))
+                        (eq (first elem) 'not)
+                        (characterp (second elem)))))
+             elems)
+      (error "'skip' takes only constant characters, or a cons starts with 'not'.")))
+
+(defun check-match-cases (cases)
+  (or (every (lambda (case)
+               (and (consp case)
+                    (or (eq (car case) 'otherwise)
+                        (and (constantp (car case))
+                             (stringp (car case))))))
+             cases)
+      (error "'match-case' takes only constant strings at the car position.")))
+
+(defun build-skip-condition (data-type elems elem-var)
+  (case data-type
+    (string
+     `(or ,@(loop for el in elems
+                  if (and (consp el)
+                          (eq (car el) 'not))
+                    collect `(not (char= ,(cadr el) ,elem-var))
+                  else
+                    collect `(char= ,el ,elem-var))))
+    (octets
+     `(or ,@(loop for el in elems
+                  if (and (consp el)
+                          (eq (car el) 'not))
+                    collect `(not (= ,(char-code (cadr el)) ,elem-var))
+                  else
+                    collect `(= ,(char-code el) ,elem-var))))
+    (otherwise
+     (let ((myeql (gensym "MYEQL")))
+       `(flet ((,myeql (a b)
+                 (if (characterp b)
+                     (char= a b)
+                     (= (char-code a) b))))
+          (or ,@(loop for el in elems
+                      if (and (consp el)
+                              (eq (car el) 'not))
+                        collect `(not (,myeql ,(cadr el) ,elem-var))
+                      else
+                        collect `(,myeql ,el ,elem-var))))))))
+
+(defun build-match-cases (data-type cases)
+  (case data-type
+    (string cases)
+    (octets
+     (dolist (case cases)
+       (when (stringp (car case))
+         (rplaca case (babel:string-to-octets (car case)))))
+     cases)
+    (otherwise
+     (error "TODO: match-case doesn't support the case when the data has no type declaration for now."))))
+
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
   (with-gensyms (g-end elem p)
-    (let* ((data-type (variable-type* data env))
-           (eql-fn (case data-type
-                     (string 'char=)
-                     (octets '=)
-                     (otherwise 'eql))))
+    (let ((data-type (variable-type* data env)))
       (once-only (data)
         `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
            (let ((,elem ,(case data-type
@@ -168,42 +234,26 @@
                                      (setq ,',elem
                                            (aref ,',data ,',p))))))
                         (skip (&rest elems)
-                          `(if (or ,@(loop for el in elems
-                                           if (and (consp el)
-                                                   (eq (car el) 'not))
-                                             collect `(not (,',eql-fn ,(cadr el) ,',elem))
-                                           else
-                                             collect `(,',eql-fn ,el ,',elem)))
+                          (check-skip-elems elems)
+                          `(if ,(build-skip-condition ',data-type elems ',elem)
                                (advance)
                                (error 'match-failed)))
                         (skip* (&rest elems)
+                          (check-skip-elems elems)
                           `(loop
-                             (if (or ,@(loop for el in elems
-                                             if (and (consp el)
-                                                     (eq (car el) 'not))
-                                               collect `(not (,',eql-fn ,(cadr el) ,',elem))
-                                             else
-                                               collect `(,',eql-fn ,el ,',elem)))
+                             (if ,(build-skip-condition ',data-type elems ',elem)
                                  (advance)
                                  (return))))
                         (skip+ (&rest elems)
-                          `(if (or ,@(loop for el in elems
-                                           if (and (consp el)
-                                                   (eq (car el) 'not))
-                                             collect `(not (,',eql-fn ,(cadr el) ,',elem))
-                                           else
-                                             collect `(,',eql-fn ,el ,',elem)))
+                          (check-skip-elems elems)
+                          `(if ,(build-skip-condition ',data-type elems ',elem)
                                (progn
                                  (advance)
                                  (skip* ,@elems))
                                (error 'match-failed)))
                         (skip? (&rest elems)
-                          `(when (or ,@(loop for el in elems
-                                             if (and (consp el)
-                                                     (eq (car el) 'not))
-                                               collect `(not (,',eql-fn ,(cadr el) ,',elem))
-                                             else
-                                               collect `(,',eql-fn ,el ,',elem)))
+                          (check-skip-elems elems)
+                          `(when ,(build-skip-condition ',data-type elems ',elem)
                              (ignore-some-conditions (eof)
                                (advance))))
                         (skip-until (fn)
@@ -246,12 +296,24 @@
                             ,@(loop for vec in vectors
                                     collect `(,vec))))
                         (match-case (&rest cases)
+                          (check-match-cases cases)
+                          (when (and ',data-type
+                                     (subtypep ',data-type 'octets))
+                            (dolist (case cases)
+                              (when (stringp (car case))
+                                (rplaca case (babel:string-to-octets (car case))))))
                           `(vector-case (,',data :start ,',p)
                              ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                    cases
                                    (append cases
                                            '((otherwise (error 'match-failed)))))))
                         (match-i-case (&rest cases)
+                          (check-match-cases cases)
+                          (when (and ',data-type
+                                     (subtypep ',data-type 'octets))
+                            (dolist (case cases)
+                              (when (stringp (car case))
+                                (rplaca case (babel:string-to-octets (car case))))))
                           `(vector-case (,',data :start ,',p :case-insensitive t)
                              ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                    cases

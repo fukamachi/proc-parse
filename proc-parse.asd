@@ -17,6 +17,7 @@
   :author "Eitaro Fukamachi"
   :license "BSD 2-Clause"
   :depends-on (:alexandria
+               :babel
                #+sbcl :sb-cltl2)
   :components ((:module "src"
                 :components
