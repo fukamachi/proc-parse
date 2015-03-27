@@ -121,7 +121,7 @@
                                             (if (<= ,end (+ ,(1+ i) ,start))
                                                 ,@(if (= (length (caar cases)) (1+ i))
                                                       (cdr (car cases))
-                                                      '(nil))
+                                                      `((go ,otherwise)))
                                                 (progn
                                                   (advance)
                                                   (typed-case (aref ,vec (+ ,(1+ i) ,start))
