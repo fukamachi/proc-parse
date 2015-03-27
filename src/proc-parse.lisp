@@ -111,22 +111,22 @@
                                                  res-cases))))))
                                   map)
                          res-cases)))))
-          (let ((end-symb (gensym "END"))
-                (otherwise-case nil))
-            (when (eq (caar (last cases)) 'otherwise)
-              (setq otherwise-case (car (last cases))
-                    cases (butlast cases)))
-            `(let ((,end-symb ,(or end `(length ,vec))))
-               (unless (<= ,end-symb ,start)
-                 (block nil
-                   (tagbody
-                      (return
-                        (case (aref ,vec ,start)
-                          ,@(build-case 0 cases vec end-symb)
-                          (otherwise (go ,otherwise))))
-                      ,otherwise
-                      ,(when otherwise-case
-                         `(return (progn ,@(cdr otherwise-case))))))))))))))
+          (with-gensyms (end-symb vector-case-block)
+            (let ((otherwise-case nil))
+              (when (eq (caar (last cases)) 'otherwise)
+                (setq otherwise-case (car (last cases))
+                      cases (butlast cases)))
+              `(let ((,end-symb ,(or end `(length ,vec))))
+                 (unless (<= ,end-symb ,start)
+                   (block ,vector-case-block
+                     (tagbody
+                        (return-from ,vector-case-block
+                          (case (aref ,vec ,start)
+                            ,@(build-case 0 cases vec end-symb)
+                            (otherwise (go ,otherwise))))
+                        ,otherwise
+                        ,(when otherwise-case
+                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case)))))))))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
