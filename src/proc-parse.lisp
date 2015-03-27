@@ -193,12 +193,15 @@
        (advance)
        (error 'match-failed)))
 
-(defmacro with-string-parsing ((data &key (start 0) end) &body body)
+(defmacro with-string-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p)
     (once-only (data)
       `(let ((,elem #\Nul)
-             (,p ,start)
-             (,g-end ,(or end
+             (,p ,(if start
+                      `(or ,start 0)
+                      0))
+             (,g-end ,(if end
+                          `(or ,end (length ,data))
                           `(length ,data))))
          (declare (type fixnum ,p ,g-end)
                   (type character ,elem))
@@ -293,12 +296,15 @@
                    ,p)
                (eof () ,p))))))))
 
-(defmacro with-octets-parsing ((data &key (start 0) end) &body body)
+(defmacro with-octets-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p)
     (once-only (data)
       `(let ((,elem 0)
-             (,p ,start)
-             (,g-end ,(or end
+             (,p ,(if start
+                      `(or ,start 0)
+                      0))
+             (,g-end ,(if end
+                          `(or ,end (length ,data))
                           `(length ,data))))
          (declare (type fixnum ,p ,g-end)
                   (type (unsigned-byte 8) ,elem))
