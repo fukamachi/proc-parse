@@ -46,28 +46,30 @@
          (and (consp (car (first cases)))
               (every #'characterp (car (first cases)))))
      (once-only (var)
-       `(cond
-          ,@(loop for (chars . body) in cases
-                  if (consp chars)
-                    collect `((or ,@(loop for ch in chars
-                                          collect `(char= ,var ,ch))) ,@body)
-                  else if (eq chars 'otherwise)
-                    collect `(t ,@body)
-                  else
-                    collect `((char= ,var ,chars) ,@body)))))
+       `(locally (declare (type character ,var))
+          (cond
+            ,@(loop for (chars . body) in cases
+                    if (consp chars)
+                      collect `((or ,@(loop for ch in chars
+                                            collect `(char= ,var ,ch))) ,@body)
+                    else if (eq chars 'otherwise)
+                           collect `(t ,@body)
+                    else
+                      collect `((char= ,var ,chars) ,@body))))))
     ((or (integerp (car (first cases)))
          (and (consp (car (first cases)))
               (every #'integerp (car (first cases)))))
      (once-only (var)
-       `(cond
-          ,@(loop for (chars . body) in cases
-                  if (consp chars)
-                    collect `((or ,@(loop for ch in chars
-                                          collect `(= ,var ,ch))) ,@body)
-                  else if (eq chars 'otherwise)
-                    collect `(t ,@body)
-                  else
-                    collect `((= ,var ,chars) ,@body)))))
+       `(locally (declare (type (unsigned-byte 8) ,var))
+          (cond
+            ,@(loop for (chars . body) in cases
+                    if (consp chars)
+                      collect `((or ,@(loop for ch in chars
+                                            collect `(= ,var ,ch))) ,@body)
+                    else if (eq chars 'otherwise)
+                           collect `(t ,@body)
+                    else
+                      collect `((= ,var ,chars) ,@body))))))
     (t `(case ,var ,@cases))))
 
 (defmacro vector-case (vec-and-options &body cases)
@@ -125,7 +127,7 @@
                                                        `(return-from ,case-block
                                                           (progn ,@(cdr (car cases))))
                                                        `(go ,otherwise))))
-                                              (typed-case (locally (declare (optimize (speed 3) (safety 0) (debug 0)))
+                                              (typed-case (locally (declare (optimize (speed 3) (safety 0)))
                                                             (aref ,vec (+ ,(1+ i) ,start)))
                                                 ,@next-case
                                                 (otherwise (go ,otherwise)))))
@@ -148,17 +150,19 @@
               (when (eq (caar (last cases)) 'otherwise)
                 (setq otherwise-case (car (last cases))
                       cases (butlast cases)))
-              `(unless (<= (length ,vec) ,start)
-                 (block ,vector-case-block
-                   (tagbody
-                      (return-from ,vector-case-block
-                        (typed-case (locally (declare (optimize (speed 3) (safety 0) (debug 0)))
-                                      (aref ,vec ,start))
-                          ,@(build-case 0 cases vec)
-                          (otherwise (go ,otherwise))))
-                      ,otherwise
-                      ,(when otherwise-case
-                         `(return-from ,vector-case-block (progn ,@(cdr otherwise-case))))))))))))))
+              `(locally
+                   (declare (type fixnum ,start))
+                 (unless (<= (length ,vec) ,start)
+                   (block ,vector-case-block
+                     (tagbody
+                        (return-from ,vector-case-block
+                          (typed-case (locally (declare (optimize (speed 3) (safety 0)))
+                                        (aref ,vec ,start))
+                            ,@(build-case 0 cases vec)
+                            (otherwise (go ,otherwise))))
+                        ,otherwise
+                        ,(when otherwise-case
+                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case)))))))))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -251,11 +255,11 @@
                                  (setq ,',elem
                                        (aref ,',data ,',p))))))
                     (skip (&rest elems)
-                      (string-skip ',elem elems))
+                      `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                         ,(string-skip ',elem elems)))
                     (skip* (&rest elems)
-                      `(loop
-                         (handler-case (skip ,@elems)
-                           (match-failed () (return)))))
+                      `(ignore-some-conditions (match-failed)
+                         (loop (skip ,@elems))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
@@ -355,11 +359,11 @@
                                  (setq ,',elem
                                        (aref ,',data ,',p))))))
                     (skip (&rest elems)
-                      (octets-skip ',elem elems))
+                      `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                         ,(octets-skip ',elem elems)))
                     (skip* (&rest elems)
-                      `(loop
-                         (handler-case (skip ,@elems)
-                           (match-failed () (return)))))
+                      `(ignore-some-conditions (match-failed)
+                         (loop (skip ,@elems))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
