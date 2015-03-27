@@ -223,6 +223,9 @@
        (advance)
        (error 'match-failed)))
 
+(declaim (ftype (function () fixnum) pos))
+(declaim (ftype (function () character) current))
+
 (defmacro with-string-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p)
     (once-only (data)
@@ -314,8 +317,8 @@
            #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
            (flet ((eofp ()
                     (<= ,g-end ,p))
-                  (current () ,elem)
-                  (pos () ,p))
+                  (current () (the character ,elem))
+                  (pos () (the fixnum ,p)))
              (handler-case
                  (progn
                    (tagbody
@@ -431,8 +434,8 @@
            #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
            (flet ((eofp ()
                     (<= ,g-end ,p))
-                  (current () (code-char ,elem))
-                  (pos () ,p))
+                  (current () (the character (code-char ,elem)))
+                  (pos () (the fixnum ,p)))
              (handler-case
                  (progn
                    (tagbody
