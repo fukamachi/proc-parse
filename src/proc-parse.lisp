@@ -40,6 +40,36 @@
 
 (define-condition eof (condition) ())
 
+(defmacro typed-case (var &body cases)
+  (cond
+    ((or (characterp (car (first cases)))
+         (and (consp (car (first cases)))
+              (every #'characterp (car (first cases)))))
+     (once-only (var)
+       `(cond
+          ,@(loop for (chars . body) in cases
+                  if (consp chars)
+                    collect `((or ,@(loop for ch in chars
+                                          collect `(char= ,var ,ch))) ,@body)
+                  else if (eq chars 'otherwise)
+                    collect `(t ,@body)
+                  else
+                    collect `((char= ,var ,chars) ,@body)))))
+    ((or (integerp (car (first cases)))
+         (and (consp (car (first cases)))
+              (every #'integerp (car (first cases)))))
+     (once-only (var)
+       `(cond
+          ,@(loop for (chars . body) in cases
+                  if (consp chars)
+                    collect `((or ,@(loop for ch in chars
+                                          collect `(= ,var ,ch))) ,@body)
+                  else if (eq chars 'otherwise)
+                    collect `(t ,@body)
+                  else
+                    collect `((= ,var ,chars) ,@body)))))
+    (t `(case ,var ,@cases))))
+
 (defmacro vector-case (vec-and-options &body cases)
   (destructuring-bind (vec &key (start 0) end case-insensitive)
       (ensure-cons vec-and-options)
@@ -94,7 +124,7 @@
                                                       '(nil))
                                                 (progn
                                                   (advance)
-                                                  (case (aref ,vec (+ ,(1+ i) ,start))
+                                                  (typed-case (aref ,vec (+ ,(1+ i) ,start))
                                                     ,@next-case
                                                     (otherwise (go ,otherwise))))))
                                           res-cases))
@@ -121,7 +151,7 @@
                    (block ,vector-case-block
                      (tagbody
                         (return-from ,vector-case-block
-                          (case (aref ,vec ,start)
+                          (typed-case (aref ,vec ,start)
                             ,@(build-case 0 cases vec end-symb)
                             (otherwise (go ,otherwise))))
                         ,otherwise
