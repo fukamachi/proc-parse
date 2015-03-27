@@ -71,10 +71,10 @@
     (t `(case ,var ,@cases))))
 
 (defmacro vector-case (vec-and-options &body cases)
-  (destructuring-bind (vec &key (start 0) end case-insensitive)
+  (destructuring-bind (vec &key (start 0) case-insensitive)
       (ensure-cons vec-and-options)
     (once-only (vec start)
-      (let ((otherwise (gensym "otherwise")))
+      (with-gensyms (otherwise case-block)
         (labels ((case-candidates (el)
                    (cond
                      ((not case-insensitive) el)
@@ -101,7 +101,7 @@
                            ,(+ el #.(- (char-code #\a) (char-code #\A)))))
                         (t el)))
                      (t el)))
-                 (build-case (i cases vec end)
+                 (build-case (i cases vec)
                    (when cases
                      (let ((map (make-hash-table)))
                        (map nil
@@ -113,20 +113,22 @@
                             cases)
                        (let (res-cases)
                          (maphash (lambda (el cases)
-                                    (let ((next-case (build-case (1+ i) cases vec end)))
+                                    (let ((next-case (build-case (1+ i) cases vec)))
                                       (cond
                                         (next-case
                                          (push
                                           `(,(case-candidates el)
-                                            (if (<= ,end (+ ,(1+ i) ,start))
-                                                ,@(if (= (length (caar cases)) (1+ i))
-                                                      (cdr (car cases))
-                                                      `((go ,otherwise)))
-                                                (progn
-                                                  (advance)
-                                                  (typed-case (aref ,vec (+ ,(1+ i) ,start))
-                                                    ,@next-case
-                                                    (otherwise (go ,otherwise))))))
+                                            (block ,case-block
+                                              (handler-case (advance)
+                                                (eof ()
+                                                  ,(if (= (length (caar cases)) (1+ i))
+                                                       `(return-from ,case-block
+                                                          (progn ,@(cdr (car cases))))
+                                                       `(go ,otherwise))))
+                                              (typed-case (locally (declare (optimize (speed 3) (safety 0) (debug 0)))
+                                                            (aref ,vec (+ ,(1+ i) ,start)))
+                                                ,@next-case
+                                                (otherwise (go ,otherwise)))))
                                           res-cases))
                                         (t
                                          (with-gensyms (main)
@@ -141,22 +143,22 @@
                                                  res-cases))))))
                                   map)
                          res-cases)))))
-          (with-gensyms (end-symb vector-case-block)
+          (with-gensyms (vector-case-block)
             (let ((otherwise-case nil))
               (when (eq (caar (last cases)) 'otherwise)
                 (setq otherwise-case (car (last cases))
                       cases (butlast cases)))
-              `(let ((,end-symb ,(or end `(length ,vec))))
-                 (unless (<= ,end-symb ,start)
-                   (block ,vector-case-block
-                     (tagbody
-                        (return-from ,vector-case-block
-                          (typed-case (aref ,vec ,start)
-                            ,@(build-case 0 cases vec end-symb)
-                            (otherwise (go ,otherwise))))
-                        ,otherwise
-                        ,(when otherwise-case
-                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case)))))))))))))))
+              `(unless (<= (length ,vec) ,start)
+                 (block ,vector-case-block
+                   (tagbody
+                      (return-from ,vector-case-block
+                        (typed-case (locally (declare (optimize (speed 3) (safety 0) (debug 0)))
+                                      (aref ,vec ,start))
+                          ,@(build-case 0 cases vec)
+                          (otherwise (go ,otherwise))))
+                      ,otherwise
+                      ,(when otherwise-case
+                         `(return-from ,vector-case-block (progn ,@(cdr otherwise-case))))))))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
