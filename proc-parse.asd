@@ -16,7 +16,8 @@
   :version "0.1"
   :author "Eitaro Fukamachi"
   :license "BSD 2-Clause"
-  :depends-on (:alexandria)
+  :depends-on (:alexandria
+               #+sbcl :sb-cltl2)
   :components ((:module "src"
                 :components
                 ((:file "proc-parse"))))

@@ -34,4 +34,9 @@
          ("Sat" (match? "urday"))))
       7))
 
+(let ((octets (map '(simple-array (unsigned-byte 8) (*)) #'char-code "Tuesday")))
+  (is (with-vector-parsing (octets)
+        (match #(84 117 101)))
+      3))
+
 (finalize)

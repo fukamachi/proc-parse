@@ -1,6 +1,12 @@
 (in-package :cl-user)
 (defpackage proc-parse
   (:use :cl)
+  #+(or sbcl openmcl cmu allegro)
+  (:import-from #+sbcl :sb-cltl2
+                #+openmcl :ccl
+                #+cmu :ext
+                #+allegro :sys
+                :variable-information)
   (:import-from :alexandria
                 :with-gensyms
                 :once-only
@@ -113,124 +119,154 @@
                       ,(when otherwise-case
                          `(return (progn ,@(cdr otherwise-case))))))))))))))
 
-(defmacro with-vector-parsing ((data &key (start 0) end) &body body)
+(defun variable-type (var &optional env)
+  (declare (ignorable env))
+  (cond
+    ((constantp var) (type-of var))
+    #+(or sbcl openmcl cmu allegro)
+    ((and (symbolp var)
+          (assoc 'type (nth-value 2 (variable-information var env)))))
+    ((and (listp var)
+          (eq (car var) 'the)
+          (cadr var)))))
+
+(deftype octets (&optional (len '*))
+  `(simple-array (unsigned-byte 8) (,len)))
+
+(defun variable-type* (var &optional env)
+  (let ((type (variable-type var env)))
+    (cond
+      ((subtypep type 'string) 'string)
+      ((subtypep type 'octets) 'octets))))
+
+(defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
   (with-gensyms (g-end elem p)
-    (once-only (data)
-      `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-         (let (,elem
-               (,p ,start)
-               (,g-end ,(or end
-                            `(length ,data))))
-           (declare (type fixnum ,p ,g-end))
-           (macrolet ((advance (&optional (step 1))
-                        `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-                           (incf ,',p ,step)
-                           ,@(if (= step 0)
-                                 ()
-                                 `((when (<= ,',g-end ,',p)
-                                     (error 'eof))
-                                   (setq ,',elem
-                                         (aref ,',data ,',p))))))
-                      (skip (&rest elems)
-                        `(if (or ,@(loop for el in elems
-                                         if (and (consp el)
-                                                 (eq (car el) 'not))
-                                           collect `(not (eql ,(cadr el) ,',elem))
-                                         else
-                                           collect `(eql ,el ,',elem)))
-                             (advance)
-                             (error 'match-failed)))
-                      (skip* (&rest elems)
-                        `(loop
-                           (if (or ,@(loop for el in elems
+    (let* ((data-type (variable-type* data env))
+           (eql-fn (case data-type
+                     (string 'char=)
+                     (octets '=)
+                     (otherwise 'eql))))
+      (once-only (data)
+        `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+           (let ((,elem ,(case data-type
+                           (string #\Nul)
+                           (octets 0)))
+                 (,p ,start)
+                 (,g-end ,(or end
+                              `(length ,data))))
+             (declare (type fixnum ,p ,g-end))
+             ,@(case data-type
+                 (string `((declare (type character ,elem))))
+                 (octets `((declare (type (unsigned-byte 8) ,elem)))))
+             (macrolet ((advance (&optional (step 1))
+                          `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                             (incf ,',p ,step)
+                             ,@(if (= step 0)
+                                   ()
+                                   `((when (<= ,',g-end ,',p)
+                                       (error 'eof))
+                                     (setq ,',elem
+                                           (aref ,',data ,',p))))))
+                        (skip (&rest elems)
+                          `(if (or ,@(loop for el in elems
                                            if (and (consp el)
                                                    (eq (car el) 'not))
-                                             collect `(not (eql ,(cadr el) ,',elem))
+                                             collect `(not (,',eql-fn ,(cadr el) ,',elem))
                                            else
-                                             collect `(eql ,el ,',elem)))
+                                             collect `(,',eql-fn ,el ,',elem)))
                                (advance)
-                               (return))))
-                      (skip+ (&rest elems)
-                        `(if (or ,@(loop for el in elems
-                                         if (and (consp el)
-                                                 (eq (car el) 'not))
-                                           collect `(not (eql ,(cadr el) ,',elem))
-                                         else
-                                           collect `(eql ,el ,',elem)))
-                             (progn
-                               (advance)
-                               (skip* ,@elems))
-                             (error 'match-failed)))
-                      (skip? (&rest elems)
-                        `(when (or ,@(loop for el in elems
+                               (error 'match-failed)))
+                        (skip* (&rest elems)
+                          `(loop
+                             (if (or ,@(loop for el in elems
+                                             if (and (consp el)
+                                                     (eq (car el) 'not))
+                                               collect `(not (,',eql-fn ,(cadr el) ,',elem))
+                                             else
+                                               collect `(,',eql-fn ,el ,',elem)))
+                                 (advance)
+                                 (return))))
+                        (skip+ (&rest elems)
+                          `(if (or ,@(loop for el in elems
                                            if (and (consp el)
                                                    (eq (car el) 'not))
-                                             collect `(not (eql ,(cadr el) ,',elem))
+                                             collect `(not (,',eql-fn ,(cadr el) ,',elem))
                                            else
-                                             collect `(eql ,el ,',elem)))
-                           (ignore-some-conditions (eof)
-                             (advance))))
-                      (skip-until (fn)
-                        `(loop until ,(if (symbolp fn)
-                                          `(,fn ,',elem)
-                                          `(funcall ,fn ,',elem))
-                               do (advance)))
-                      (skip-while (fn)
-                        `(loop while ,(if (symbolp fn)
-                                          `(,fn ,',elem)
-                                          `(funcall ,fn ,',elem))
-                               do (advance)))
-                      (bind ((symb &body bind-forms) &body body)
-                        (with-gensyms (start main)
-                          `(let ((,start ,',p))
-                             (flet ((,main ()
-                                      (let ((,symb (subseq ,',data ,start ,',p)))
-                                        ,@body)))
-                               (handler-bind ((eof
-                                                (lambda (e)
-                                                  (declare (ignore e))
-                                                  (,main))))
-                                 ,@bind-forms)
-                               (,main)))))
-                      (match (&rest vectors)
-                        `(match-case
-                          ,@(loop for vec in vectors
-                                  collect `(,vec))))
-                      (match? (&rest vectors)
-                        (with-gensyms (start start-elem)
-                          `(let ((,start ,',p)
-                                 (,start-elem ,',elem))
-                             (handler-case
-                                 (match ,@vectors)
-                               (match-failed ()
-                                 (setq ,',p ,start
-                                       ,',elem ,start-elem))))))
-                      (match-i (&rest vectors)
-                        `(match-i-case
-                          ,@(loop for vec in vectors
-                                  collect `(,vec))))
-                      (match-case (&rest cases)
-                        `(vector-case (,',data :start ,',p)
-                           ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                 cases
-                                 (append cases
-                                         '((otherwise (error 'match-failed)))))))
-                      (match-i-case (&rest cases)
-                        `(vector-case (,',data :start ,',p :case-insensitive t)
-                           ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                 cases
-                                 (append cases
-                                         '((otherwise (error 'match-failed))))))))
-             (flet ((eofp ()
-                      (<= ,g-end ,p))
-                    (current () ,elem)
-                    (pos () ,p))
-               (handler-case
-                   (progn
-                     (tagbody
-                        (when (eofp)
-                          (error 'eof))
-                        (setq ,elem (aref ,data ,p))
-                        ,@body)
-                     ,p)
-                 (eof () ,p)))))))))
+                                             collect `(,',eql-fn ,el ,',elem)))
+                               (progn
+                                 (advance)
+                                 (skip* ,@elems))
+                               (error 'match-failed)))
+                        (skip? (&rest elems)
+                          `(when (or ,@(loop for el in elems
+                                             if (and (consp el)
+                                                     (eq (car el) 'not))
+                                               collect `(not (,',eql-fn ,(cadr el) ,',elem))
+                                             else
+                                               collect `(,',eql-fn ,el ,',elem)))
+                             (ignore-some-conditions (eof)
+                               (advance))))
+                        (skip-until (fn)
+                          `(loop until ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                 do (advance)))
+                        (skip-while (fn)
+                          `(loop while ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                 do (advance)))
+                        (bind ((symb &body bind-forms) &body body)
+                          (with-gensyms (start main)
+                            `(let ((,start ,',p))
+                               (flet ((,main ()
+                                        (let ((,symb (subseq ,',data ,start ,',p)))
+                                          ,@body)))
+                                 (handler-bind ((eof
+                                                  (lambda (e)
+                                                    (declare (ignore e))
+                                                    (,main))))
+                                   ,@bind-forms)
+                                 (,main)))))
+                        (match (&rest vectors)
+                          `(match-case
+                            ,@(loop for vec in vectors
+                                    collect `(,vec))))
+                        (match? (&rest vectors)
+                          (with-gensyms (start start-elem)
+                            `(let ((,start ,',p)
+                                   (,start-elem ,',elem))
+                               (handler-case
+                                   (match ,@vectors)
+                                 (match-failed ()
+                                   (setq ,',p ,start
+                                         ,',elem ,start-elem))))))
+                        (match-i (&rest vectors)
+                          `(match-i-case
+                            ,@(loop for vec in vectors
+                                    collect `(,vec))))
+                        (match-case (&rest cases)
+                          `(vector-case (,',data :start ,',p)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed)))))))
+                        (match-i-case (&rest cases)
+                          `(vector-case (,',data :start ,',p :case-insensitive t)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed))))))))
+               (flet ((eofp ()
+                        (<= ,g-end ,p))
+                      (current () ,elem)
+                      (pos () ,p))
+                 (handler-case
+                     (progn
+                       (tagbody
+                          (when (eofp)
+                            (error 'eof))
+                          (setq ,elem (aref ,data ,p))
+                          ,@body)
+                       ,p)
+                   (eof () ,p))))))))))
