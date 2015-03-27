@@ -54,29 +54,28 @@
     ((or (characterp (car (first cases)))
          (and (consp (car (first cases)))
               (every #'characterp (car (first cases)))))
-     `(locally (declare (type character ,var))
-        ,(if (= 1 (length (remove-if (lambda (case)
-                                       (eq (car case) 'otherwise))
-                                     cases)))
-             (if (find 'otherwise cases :key #'car :test #'eq)
-                 (with-gensyms (end)
-                   `(tagbody
-                       (unless ,(case-clause-to-condition var (caar cases))
-                         ,@(cdr (find 'otherwise cases :key #'car :test #'eq))
-                         (go ,end))
-                       ,@(cdr (car cases))
-                       ,end))
-                 `(when ,(case-clause-to-condition var (caar cases))
-                    ,@(cdr (car cases))))
-             `(cond
-                ,@(loop for (chars . body) in cases
-                        if (consp chars)
-                          collect `((or ,@(loop for ch in chars
-                                                collect `(char= ,var ,ch))) ,@body)
-                        else if (eq chars 'otherwise)
-                               collect `(t ,@body)
-                        else
-                          collect `((char= ,var ,chars) ,@body))))))
+     (if (= 1 (length (remove-if (lambda (case)
+                                   (eq (car case) 'otherwise))
+                                 cases)))
+         (if (find 'otherwise cases :key #'car :test #'eq)
+             (with-gensyms (end)
+               `(tagbody
+                   (unless ,(case-clause-to-condition var (caar cases))
+                     ,@(cdr (find 'otherwise cases :key #'car :test #'eq))
+                     (go ,end))
+                   ,@(cdr (car cases))
+                   ,end))
+             `(when ,(case-clause-to-condition var (caar cases))
+                ,@(cdr (car cases))))
+         `(cond
+            ,@(loop for (chars . body) in cases
+                    if (consp chars)
+                      collect `((or ,@(loop for ch in chars
+                                            collect `(char= ,var ,ch))) ,@body)
+                    else if (eq chars 'otherwise)
+                           collect `(t ,@body)
+                    else
+                      collect `((char= ,var ,chars) ,@body)))))
     ((or (integerp (car (first cases)))
          (and (consp (car (first cases)))
               (every #'integerp (car (first cases)))))
@@ -105,88 +104,84 @@
     (t `(case ,var ,@cases))))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
-  (destructuring-bind (vec &key (start 0) case-insensitive)
+  (destructuring-bind (vec &key case-insensitive)
       (ensure-cons vec-and-options)
-    (once-only (vec start)
-      (with-gensyms (otherwise end-tag)
-        (labels ((case-candidates (el)
-                   (cond
-                     ((not case-insensitive) el)
-                     ((characterp el)
-                      (cond
-                        ((char<= #\a el #\z)
-                         `(,el
-                           ,(code-char
-                             (- (char-code el)
-                                #.(- (char-code #\a) (char-code #\A))))))
-                        ((char<= #\A el #\Z)
-                         `(,el
-                           ,(code-char
-                             (+ (char-code el)
-                                #.(- (char-code #\a) (char-code #\A))))))
-                        (t el)))
-                     ((typep el '(unsigned-byte 8))
-                      (cond
-                        ((<= #.(char-code #\a) el #.(char-code #\z))
-                         `(,el
-                           ,(- el #.(- (char-code #\a) (char-code #\A)))))
-                        ((<= #.(char-code #\A) el #.(char-code #\Z))
-                         `(,el
-                           ,(+ el #.(- (char-code #\a) (char-code #\A)))))
-                        (t el)))
-                     (t el)))
-                 (build-case (i cases vec)
-                   (when cases
-                     (let ((map (make-hash-table)))
-                       (map nil
-                            (lambda (case)
-                              (unless (vectorp (car case))
-                                (error "The first element of cases must be a constant vector"))
-                              (unless (<= (length (car case)) i)
-                                (push case (gethash (aref (car case) i) map))))
-                            cases)
-                       (let (res-cases)
-                         (maphash (lambda (el cases)
-                                    (let ((next-case (build-case (1+ i) cases vec)))
-                                      (cond
-                                        (next-case
-                                         (push
-                                          `(,(case-candidates el)
-                                            (unless (advance*)
-                                              ,(if (= (length (caar cases)) (1+ i))
-                                                   `(progn ,@(cdr (car cases))
-                                                           (go ,end-tag))
-                                                   `(go ,otherwise)))
-                                            (typed-case ,elem-var
-                                              ,@next-case
-                                              (otherwise (go ,otherwise))))
-                                          res-cases))
-                                        (t
-                                         (push (with-gensyms (eofp)
-                                                 `(,(case-candidates el)
-                                                   (let ((,eofp (advance*)))
-                                                     ,@(cdr (car cases))
-                                                     (and ,eofp
-                                                          (error 'eof)))))
-                                               res-cases)))))
-                                  map)
-                         res-cases)))))
-          (let ((otherwise-case nil))
-            (when (eq (caar (last cases)) 'otherwise)
-              (setq otherwise-case (car (last cases))
-                    cases (butlast cases)))
-            `(locally
-                 (declare (type fixnum ,start))
-               (unless (<= (length ,vec) ,start)
-                 (tagbody
-                    (typed-case ,elem-var
-                      ,@(build-case 0 cases vec)
-                      (otherwise (go ,otherwise)))
-                    (go ,end-tag)
-                    ,otherwise
-                    ,@(when otherwise-case
-                        (cdr otherwise-case))
-                    ,end-tag)))))))))
+    (with-gensyms (otherwise end-tag)
+      (labels ((case-candidates (el)
+                 (cond
+                   ((not case-insensitive) el)
+                   ((characterp el)
+                    (cond
+                      ((char<= #\a el #\z)
+                       `(,el
+                         ,(code-char
+                           (- (char-code el)
+                              #.(- (char-code #\a) (char-code #\A))))))
+                      ((char<= #\A el #\Z)
+                       `(,el
+                         ,(code-char
+                           (+ (char-code el)
+                              #.(- (char-code #\a) (char-code #\A))))))
+                      (t el)))
+                   ((typep el '(unsigned-byte 8))
+                    (cond
+                      ((<= #.(char-code #\a) el #.(char-code #\z))
+                       `(,el
+                         ,(- el #.(- (char-code #\a) (char-code #\A)))))
+                      ((<= #.(char-code #\A) el #.(char-code #\Z))
+                       `(,el
+                         ,(+ el #.(- (char-code #\a) (char-code #\A)))))
+                      (t el)))
+                   (t el)))
+               (build-case (i cases vec)
+                 (when cases
+                   (let ((map (make-hash-table)))
+                     (map nil
+                          (lambda (case)
+                            (unless (vectorp (car case))
+                              (error "The first element of cases must be a constant vector"))
+                            (unless (<= (length (car case)) i)
+                              (push case (gethash (aref (car case) i) map))))
+                          cases)
+                     (let (res-cases)
+                       (maphash (lambda (el cases)
+                                  (let ((next-case (build-case (1+ i) cases vec)))
+                                    (cond
+                                      (next-case
+                                       (push
+                                        `(,(case-candidates el)
+                                          (unless (advance*)
+                                            ,(if (= (length (caar cases)) (1+ i))
+                                                 `(progn ,@(cdr (car cases))
+                                                         (go ,end-tag))
+                                                 `(go ,otherwise)))
+                                          (typed-case ,elem-var
+                                            ,@next-case
+                                            (otherwise (go ,otherwise))))
+                                        res-cases))
+                                      (t
+                                       (push (with-gensyms (eofp)
+                                               `(,(case-candidates el)
+                                                 (let ((,eofp (advance*)))
+                                                   ,@(cdr (car cases))
+                                                   (and ,eofp
+                                                        (error 'eof)))))
+                                             res-cases)))))
+                                map)
+                       res-cases)))))
+        (let ((otherwise-case nil))
+          (when (eq (caar (last cases)) 'otherwise)
+            (setq otherwise-case (car (last cases))
+                  cases (butlast cases)))
+          `(tagbody
+              (typed-case ,elem-var
+                ,@(build-case 0 cases vec)
+                (otherwise (go ,otherwise)))
+              (go ,end-tag)
+              ,otherwise
+              ,@(when otherwise-case
+                  (cdr otherwise-case))
+              ,end-tag))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -338,14 +333,14 @@
                                 collect `(,vec))))
                     (match-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case ,',elem (,',data :start ,',p)
+                      `(vector-case ,',elem (,',data)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
                                        '((otherwise (error 'match-failed)))))))
                     (match-i-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case ,',elem (,',data :start ,',p :case-insensitive t)
+                      `(vector-case ,',elem (,',data :case-insensitive t)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
@@ -454,7 +449,7 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case ,',elem (,',data :start ,',p)
+                      `(vector-case ,',elem (,',data)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
@@ -468,7 +463,7 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case ,',elem (,',data :start ,',p :case-insensitive t)
+                      `(vector-case ,',elem (,',data :case-insensitive t)
                          ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                cases
                                (append cases
