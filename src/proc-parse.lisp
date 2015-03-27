@@ -236,7 +236,8 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type fixnum ,p ,g-end)
+         (declare (type string ,data)
+                  (type fixnum ,p ,g-end)
                   (type character ,elem))
          (macrolet ((advance (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
@@ -339,7 +340,8 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type fixnum ,p ,g-end)
+         (declare (type octets ,data)
+                  (type fixnum ,p ,g-end)
                   (type (unsigned-byte 8) ,elem))
          (macrolet ((advance (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
