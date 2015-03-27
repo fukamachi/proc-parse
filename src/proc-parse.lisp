@@ -76,7 +76,7 @@
   (destructuring-bind (vec &key (start 0) case-insensitive)
       (ensure-cons vec-and-options)
     (once-only (vec start)
-      (with-gensyms (otherwise case-block)
+      (with-gensyms (otherwise end-tag)
         (labels ((case-candidates (el)
                    (cond
                      ((not case-insensitive) el)
@@ -120,29 +120,24 @@
                                         (next-case
                                          (push
                                           `(,(case-candidates el)
-                                            (block ,case-block
-                                              (handler-case (advance)
-                                                (eof ()
-                                                  ,(if (= (length (caar cases)) (1+ i))
-                                                       `(return-from ,case-block
-                                                          (progn ,@(cdr (car cases))))
-                                                       `(go ,otherwise))))
-                                              (typed-case (locally (declare (optimize (speed 3) (safety 0)))
-                                                            (aref ,vec (+ ,(1+ i) ,start)))
-                                                ,@next-case
-                                                (otherwise (go ,otherwise)))))
+                                            (unless (advance*)
+                                              ,(if (= (length (caar cases)) (1+ i))
+                                                   `(progn ,@(cdr (car cases))
+                                                           (go ,end-tag))
+                                                   `(go ,otherwise)))
+                                            (typed-case (locally (declare (optimize (speed 3) (safety 0)))
+                                                          (aref ,vec (+ ,(1+ i) ,start)))
+                                              ,@next-case
+                                              (otherwise (go ,otherwise))))
                                           res-cases))
                                         (t
-                                         (with-gensyms (main)
-                                           (push `(,(case-candidates el)
-                                                   (flet ((,main () ,@(cdr (car cases))))
-                                                     (handler-bind ((eof
-                                                                      (lambda (e)
-                                                                        (declare (ignore e))
-                                                                        (,main))))
-                                                       (advance))
-                                                     (,main)))
-                                                 res-cases))))))
+                                         (push (with-gensyms (eofp)
+                                                 `(,(case-candidates el)
+                                                   (let ((,eofp (advance*)))
+                                                     ,@(cdr (car cases))
+                                                     (and ,eofp
+                                                          (error 'eof)))))
+                                               res-cases)))))
                                   map)
                          res-cases)))))
           (with-gensyms (vector-case-block)
@@ -162,7 +157,8 @@
                             (otherwise (go ,otherwise))))
                         ,otherwise
                         ,(when otherwise-case
-                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case)))))))))))))))
+                           `(return-from ,vector-case-block (progn ,@(cdr otherwise-case))))
+                        ,end-tag)))))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -246,14 +242,19 @@
                   (type fixnum ,p ,g-end)
                   (type character ,elem))
          (macrolet ((advance (&optional (step 1))
+                      `(or (advance* ,step)
+                           (error 'eof)))
+                    (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
                          ,@(if (= step 0)
                                ()
-                               `((when (<= ,',g-end ,',p)
-                                   (error 'eof))
-                                 (setq ,',elem
-                                       (aref ,',data ,',p))))))
+                               `((if (<= ,',g-end ,',p)
+                                     nil
+                                     (progn
+                                       (setq ,',elem
+                                             (aref ,',data ,',p))
+                                       t))))))
                     (skip (&rest elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          ,(string-skip ',elem elems)))
@@ -350,14 +351,19 @@
                   (type fixnum ,p ,g-end)
                   (type (unsigned-byte 8) ,elem))
          (macrolet ((advance (&optional (step 1))
+                      `(or (advance* ,step)
+                           (error 'eof)))
+                    (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
                          ,@(if (= step 0)
                                ()
-                               `((when (<= ,',g-end ,',p)
-                                   (error 'eof))
-                                 (setq ,',elem
-                                       (aref ,',data ,',p))))))
+                               `((if (<= ,',g-end ,',p)
+                                     nil
+                                     (progn
+                                       (setq ,',elem
+                                             (aref ,',data ,',p))
+                                       t))))))
                     (skip (&rest elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          ,(octets-skip ',elem elems)))
