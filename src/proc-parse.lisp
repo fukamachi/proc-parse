@@ -317,15 +317,12 @@
                     (<= ,g-end ,p))
                   (current () (the character ,elem))
                   (pos () (the fixnum ,p)))
-             (handler-case
-                 (progn
-                   (tagbody
-                      (when (eofp)
-                        (error 'eof))
-                      (setq ,elem (aref ,data ,p))
-                      ,@body)
-                   ,p)
-               (eof () ,p))))))))
+             (tagbody
+                (when (eofp)
+                  (error 'eof))
+                (setq ,elem (aref ,data ,p))
+                ,@body)
+             ,p))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p)
@@ -440,15 +437,12 @@
                     (<= ,g-end ,p))
                   (current () (the character (code-char ,elem)))
                   (pos () (the fixnum ,p)))
-             (handler-case
-                 (progn
-                   (tagbody
-                      (when (eofp)
-                        (error 'eof))
-                      (setq ,elem (aref ,data ,p))
-                      ,@body)
-                   ,p)
-               (eof () ,p))))))))
+             (tagbody
+                (when (eofp)
+                  (error 'eof))
+                (setq ,elem (aref ,data ,p))
+                ,@body)
+             ,p))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
   (let ((data-type (variable-type* data env)))
