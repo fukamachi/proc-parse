@@ -148,8 +148,8 @@
               (go ,end-tag)
               ,otherwise
               ,@(when otherwise-case
-                  `(unless (eofp)
-                     ,@(cdr otherwise-case)))
+                  `((unless (eofp)
+                      ,@(cdr otherwise-case))))
               ,end-tag))))))
 
 (defun variable-type (var &optional env)
