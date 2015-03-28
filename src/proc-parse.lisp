@@ -54,21 +54,20 @@
            `(char= ,var ,chars)
            `(= ,var ,chars)))))
 
-(defmacro typed-case (var &body cases)
+(defun typed-case-tagbodies (var &rest cases)
   (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
                                                                  collect (gensym))))
         (end (gensym "END")))
-    `(tagbody
-        ,@(loop for (chars . body) in cases
-                for i from 0
-                collect `(when ,(convert-case-conditions var chars)
-                           (go ,(aref tags i))))
-        ,@(loop for case in cases
-                for i from 0
-                append `(,(aref tags i)
-                         ,@(cdr case)
-                         (go ,end)))
-        ,end)))
+    `(,@(loop for (chars . body) in cases
+              for i from 0
+              collect `(when ,(convert-case-conditions var chars)
+                         (go ,(aref tags i))))
+      ,@(loop for case in cases
+              for i from 0
+              append `(,(aref tags i)
+                       ,@(cdr case)
+                       (go ,end)))
+      ,end)))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
@@ -122,9 +121,10 @@
                                                  `(progn ,@(cdr (car cases))
                                                          (go ,end-tag))
                                                  `(go ,otherwise)))
-                                          (typed-case ,elem-var
-                                            ,@next-case
-                                            (otherwise (go ,otherwise))))
+                                          ,@(apply #'typed-case-tagbodies elem-var
+                                                   (append
+                                                    next-case
+                                                    `((otherwise (go ,otherwise))))))
                                         res-cases))
                                       (t
                                        (push (with-gensyms (eofp)
@@ -141,9 +141,10 @@
             (setq otherwise-case (car (last cases))
                   cases (butlast cases)))
           `(tagbody
-              (typed-case ,elem-var
-                ,@(build-case 0 cases vec)
-                (otherwise (go ,otherwise)))
+              ,@(apply #'typed-case-tagbodies elem-var
+                       (append
+                        (build-case 0 cases vec)
+                        `((otherwise (go ,otherwise)))))
               (go ,end-tag)
               ,otherwise
               ,@(when otherwise-case
