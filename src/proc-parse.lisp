@@ -244,11 +244,29 @@
                                              (aref ,',data ,',p))
                                        t))))))
                     (skip (&rest elems)
+                      (check-skip-elems elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-                         ,(string-skip ',elem elems)))
+                         (if (or ,@(loop for el in elems
+                                         if (and (consp el)
+                                                 (eq (car el) 'not))
+                                           collect `(not (char= ,(cadr el) ,',elem))
+                                         else
+                                           collect `(char= ,el ,',elem)))
+                             (advance)
+                             (error 'match-failed))))
                     (skip* (&rest elems)
-                      `(ignore-some-conditions (match-failed)
-                         (loop (skip ,@elems))))
+                      (check-skip-elems elems)
+                      `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                         (unless (eofp)
+                           (loop
+                             (unless (or ,@(loop for el in elems
+                                                 if (and (consp el)
+                                                         (eq (car el) 'not))
+                                                   collect `(not (char= ,(cadr el) ,',elem))
+                                                 else
+                                                   collect `(char= ,el ,',elem)))
+                               (return))
+                             (or (advance*) (return))))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
@@ -347,11 +365,29 @@
                                              (aref ,',data ,',p))
                                        t))))))
                     (skip (&rest elems)
+                      (check-skip-elems elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-                         ,(octets-skip ',elem elems)))
+                         (if (or ,@(loop for el in elems
+                                         if (and (consp el)
+                                                 (eq (car el) 'not))
+                                           collect `(not (= ,(char-code (cadr el)) ,elem))
+                                         else
+                                           collect `(= ,(char-code el) ,elem)))
+                             (advance)
+                             (error 'match-failed))))
                     (skip* (&rest elems)
-                      `(ignore-some-conditions (match-failed)
-                         (loop (skip ,@elems))))
+                      (check-skip-elems elems)
+                      `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                         (unless (eofp)
+                           (loop
+                             (unless (or ,@(loop for el in elems
+                                                 if (and (consp el)
+                                                         (eq (car el) 'not))
+                                                   collect `(not (= ,(cadr el) ,',elem))
+                                                 else
+                                                   collect `(= ,el ,',elem)))
+                               (return))
+                             (or (advance*) (return))))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
