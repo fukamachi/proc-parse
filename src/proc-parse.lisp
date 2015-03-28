@@ -19,6 +19,7 @@
            :current
            :pos
            :advance
+           :advance*
            :skip
            :skip*
            :skip+
@@ -127,28 +128,28 @@
                                             (otherwise (go ,otherwise))))
                                         res-cases))
                                       (t
-                                       (push (with-gensyms (eofp)
-                                               `(,(case-candidates el)
-                                                 (let ((,eofp (advance*)))
-                                                   ,@(cdr (car cases))
-                                                   (and ,eofp
-                                                        (error 'eof)))))
+                                       (push `(,(case-candidates el)
+                                               (advance*)
+                                               ,@(cdr (car cases)))
                                              res-cases)))))
                                 map)
                        res-cases)))))
-        (let ((otherwise-case nil))
-          (when (eq (caar (last cases)) 'otherwise)
-            (setq otherwise-case (car (last cases))
-                  cases (butlast cases)))
-          `(tagbody
-              (typed-case ,elem-var
-                ,@(build-case 0 cases vec)
-                (otherwise (go ,otherwise)))
-              (go ,end-tag)
-              ,otherwise
-              ,@(when otherwise-case
-                  (cdr otherwise-case))
-              ,end-tag))))))
+        (with-gensyms (vector-case-block)
+          (let ((otherwise-case nil))
+            (when (eq (caar (last cases)) 'otherwise)
+              (setq otherwise-case (car (last cases))
+                    cases (butlast cases)))
+            `(block ,vector-case-block
+               (tagbody
+                  (return-from ,vector-case-block
+                    (typed-case ,elem-var
+                      ,@(build-case 0 cases vec)
+                      (otherwise (go ,otherwise))))
+                  ,otherwise
+                  ,(when otherwise-case
+                      `(return-from ,vector-case-block
+                         (progn ,@(cdr otherwise-case))))
+                  ,end-tag))))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -195,25 +196,25 @@
 
 (defun string-skip (elem-var elems)
   (check-skip-elems elems)
-  `(if (or ,@(loop for el in elems
+  `(when (or ,@(loop for el in elems
                    if (and (consp el)
                            (eq (car el) 'not))
                      collect `(not (char= ,(cadr el) ,elem-var))
                    else
                      collect `(char= ,el ,elem-var)))
-       (advance)
-       (error 'match-failed)))
+     (advance*)
+     t))
 
 (defun octets-skip (elem-var elems)
   (check-skip-elems elems)
-  `(if (or ,@(loop for el in elems
+  `(when (or ,@(loop for el in elems
                    if (and (consp el)
                            (eq (car el) 'not))
                      collect `(not (= ,(char-code (cadr el)) ,elem-var))
                    else
                      collect `(= ,(char-code el) ,elem-var)))
-       (advance)
-       (error 'match-failed)))
+       (advance*)
+       t))
 
 (declaim (ftype (function () fixnum) pos))
 (declaim (ftype (function () character) current))
@@ -247,28 +248,27 @@
                                        t))))))
                     (skip (&rest elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-                         ,(string-skip ',elem elems)))
+                         (unless ,(string-skip ',elem elems)
+                           (error 'match-failed))))
                     (skip* (&rest elems)
-                      `(ignore-some-conditions (match-failed)
-                         (loop (skip ,@elems))))
+                      `(loop while ,(string-skip ',elem elems)))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
                          (skip* ,@elems)))
                     (skip? (&rest elems)
                       (check-skip-elems elems)
-                      `(ignore-some-conditions (match-failed)
-                         (skip ,@elems)))
+                      (string-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until ,(if (symbolp fn)
-                                        `(,fn ,',elem)
-                                        `(funcall ,fn ,',elem))
-                             do (advance)))
+                      `(loop until (or ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                       (not (advance*)))))
                     (skip-while (fn)
-                      `(loop while ,(if (symbolp fn)
-                                        `(,fn ,',elem)
-                                        `(funcall ,fn ,',elem))
-                             do (advance)))
+                      `(loop while (and ,(if (symbolp fn)
+                                             `(,fn ,',elem)
+                                             `(funcall ,fn ,',elem))
+                                        (advance*))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start main)
                         `(let ((,start ,',p))
@@ -353,28 +353,27 @@
                                        t))))))
                     (skip (&rest elems)
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
-                         ,(octets-skip ',elem elems)))
+                         (unless ,(octets-skip ',elem elems)
+                           (error 'match-failed))))
                     (skip* (&rest elems)
-                      `(ignore-some-conditions (match-failed)
-                         (loop (skip ,@elems))))
+                      `(loop while ,(octets-skip ',elem elems)))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
                          (skip* ,@elems)))
                     (skip? (&rest elems)
                       (check-skip-elems elems)
-                      `(ignore-some-conditions (match-failed)
-                         (skip ,@elems)))
+                      (octets-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until ,(if (symbolp fn)
-                                        `(,fn (code-char ,',elem))
-                                        `(funcall ,fn (code-char ,',elem)))
-                             do (advance)))
+                      `(loop until (or ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                       (not (advance*)))))
                     (skip-while (fn)
-                      `(loop while ,(if (symbolp fn)
-                                        `(,fn (code-char ,',elem))
-                                        `(funcall ,fn (code-char ,',elem)))
-                             do (advance)))
+                      `(loop while (and ,(if (symbolp fn)
+                                             `(,fn ,',elem)
+                                             `(funcall ,fn ,',elem))
+                                        (advance*))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start main)
                         `(let ((,start ,',p))
