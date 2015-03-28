@@ -52,19 +52,30 @@
            `(= ,var ,chars)))))
 
 (defun typed-case-tagbodies (var &rest cases)
-  (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
-                                                                 collect (gensym))))
-        (end (gensym "END")))
-    `(,@(loop for (chars . body) in cases
-              for i from 0
-              collect `(when ,(convert-case-conditions var chars)
-                         (go ,(aref tags i))))
-      ,@(loop for case in cases
-              for i from 0
-              append `(,(aref tags i)
-                       ,@(cdr case)
-                       (go ,end)))
-      ,end)))
+  (cond
+    ((null cases) nil)
+    ((= 1 (length cases))
+     `((when ,(convert-case-conditions var (car (first cases)))
+         ,@(cdr (first cases)))))
+    ((and (= 2 (length cases))
+          (eq (car (second cases)) 'otherwise))
+     `((unless ,(convert-case-conditions var (car (first cases)))
+         ,@(cdr (second cases)))
+       ,@(cdr (first cases))))
+    (t
+     (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
+                                                                    collect (gensym))))
+           (end (gensym "END")))
+       `(,@(loop for (chars . body) in cases
+                 for i from 0
+                 collect `(when ,(convert-case-conditions var chars)
+                            (go ,(aref tags i))))
+         ,@(loop for case in cases
+                 for i from 0
+                 append `(,(aref tags i)
+                          ,@(cdr case)
+                          (go ,end)))
+         ,end)))))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
