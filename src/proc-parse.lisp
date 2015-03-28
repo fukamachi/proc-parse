@@ -40,35 +40,35 @@
 
 (define-condition eof (condition) ())
 
-(defmacro typed-case (var &body cases)
+(defun convert-case-conditions (var chars)
   (cond
-    ((or (characterp (car (first cases)))
-         (and (consp (car (first cases)))
-              (every #'characterp (car (first cases)))))
-     `(locally (declare (type character ,var))
-        (cond
-          ,@(loop for (chars . body) in cases
-                  if (consp chars)
-                    collect `((or ,@(loop for ch in chars
-                                          collect `(char= ,var ,ch))) ,@body)
-                  else if (eq chars 'otherwise)
-                         collect `(t ,@body)
+    ((consp chars)
+     `(or ,@(loop for ch in chars
+                  if (characterp ch)
+                    collect `(char= ,var ,ch)
                   else
-                    collect `((char= ,var ,chars) ,@body)))))
-    ((or (integerp (car (first cases)))
-         (and (consp (car (first cases)))
-              (every #'integerp (car (first cases)))))
-     `(locally (declare (type (unsigned-byte 8) ,var))
-        (cond
-          ,@(loop for (chars . body) in cases
-                  if (consp chars)
-                    collect `((or ,@(loop for ch in chars
-                                          collect `(= ,var ,ch))) ,@body)
-                  else if (eq chars 'otherwise)
-                         collect `(t ,@body)
-                  else
-                    collect `((= ,var ,chars) ,@body)))))
-    (t `(case ,var ,@cases))))
+                    collect `(= ,var ,ch))))
+    ((eq chars 'otherwise)
+     t)
+    (t (if (characterp chars)
+           `(char= ,var ,chars)
+           `(= ,var ,chars)))))
+
+(defmacro typed-case (var &body cases)
+  (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
+                                                                 collect (gensym))))
+        (end (gensym "END")))
+    `(tagbody
+        ,@(loop for (chars . body) in cases
+                for i from 0
+                collect `(when ,(convert-case-conditions var chars)
+                           (go ,(aref tags i))))
+        ,@(loop for case in cases
+                for i from 0
+                append `(,(aref tags i)
+                         ,@(cdr case)
+                         (go ,end)))
+        ,end)))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
