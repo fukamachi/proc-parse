@@ -217,9 +217,6 @@
        (advance)
        (error 'match-failed)))
 
-(declaim (ftype (function () fixnum) pos))
-(declaim (ftype (function () character) current))
-
 (defmacro with-string-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p)
     (once-only (data)
@@ -449,3 +446,9 @@
                    `(etypecase ,data
                       (string (with-string-parsing (,data :start ,start :end ,end) ,@body))
                       (octets (with-octets-parsing (,data :start ,start :end ,end) ,@body))))))))
+
+(declaim (ftype (function () fixnum) pos)
+         (inline pos))
+(declaim (ftype (function () character) current)
+         (inline current))
+(declaim (inline eofp))
