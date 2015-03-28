@@ -40,60 +40,28 @@
 
 (define-condition eof (condition) ())
 
-(defun case-clause-to-condition (var chars &optional (test-fn 'char=))
-  (cond
-    ((consp chars)
-     `(or ,@(loop for ch in chars
-                  collect `(,test-fn ,var ,ch))))
-    ((eq chars 'otherwise)
-     t)
-    (t `(,test-fn ,var ,chars))))
-
 (defmacro typed-case (var &body cases)
   (cond
     ((or (characterp (car (first cases)))
          (and (consp (car (first cases)))
               (every #'characterp (car (first cases)))))
-     `(locally (declare (type character ,var))
-        ,(if (= 1 (length (remove-if (lambda (case)
-                                       (eq (car case) 'otherwise))
-                                     cases)))
-             (if (find 'otherwise cases :key #'car :test #'eq)
-                 (with-gensyms (end)
-                   `(tagbody
-                       (unless ,(case-clause-to-condition var (caar cases))
-                         ,@(cdr (find 'otherwise cases :key #'car :test #'eq))
-                         (go ,end))
-                       ,@(cdr (car cases))
-                       ,end))
-                 `(when ,(case-clause-to-condition var (caar cases))
-                    ,@(cdr (car cases))))
-             `(cond
-                ,@(loop for (chars . body) in cases
-                        if (consp chars)
-                          collect `((or ,@(loop for ch in chars
-                                                collect `(char= ,var ,ch))) ,@body)
-                        else if (eq chars 'otherwise)
-                               collect `(t ,@body)
-                        else
-                          collect `((char= ,var ,chars) ,@body))))))
+     (once-only (var)
+       `(locally (declare (type character ,var))
+          (cond
+            ,@(loop for (chars . body) in cases
+                    if (consp chars)
+                      collect `((or ,@(loop for ch in chars
+                                            collect `(char= ,var ,ch))) ,@body)
+                    else if (eq chars 'otherwise)
+                           collect `(t ,@body)
+                    else
+                      collect `((char= ,var ,chars) ,@body))))))
     ((or (integerp (car (first cases)))
          (and (consp (car (first cases)))
               (every #'integerp (car (first cases)))))
-     (if (= 1 (length (remove-if (lambda (case)
-                                   (eq (car case) 'otherwise))
-                                 cases)))
-         (if (find 'otherwise cases :key #'car :test #'eq)
-             (with-gensyms (end)
-               `(tagbody
-                   (unless ,(case-clause-to-condition var (caar cases) '=)
-                     ,@(cdr (find 'otherwise cases :key #'car :test #'eq))
-                     (go ,end))
-                   ,@(cdr (car cases))
-                   ,end))
-             `(when ,(case-clause-to-condition var (caar cases) '=)
-                ,@(cdr (car cases))))
-         `(cond
+     (once-only (var)
+       `(locally (declare (type (unsigned-byte 8) ,var))
+          (cond
             ,@(loop for (chars . body) in cases
                     if (consp chars)
                       collect `((or ,@(loop for ch in chars
@@ -101,7 +69,7 @@
                     else if (eq chars 'otherwise)
                            collect `(t ,@body)
                     else
-                      collect `((= ,var ,chars) ,@body)))))
+                      collect `((= ,var ,chars) ,@body))))))
     (t `(case ,var ,@cases))))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
