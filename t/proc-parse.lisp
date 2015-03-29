@@ -7,7 +7,7 @@
                           :skip))
 (in-package :proc-parse-test)
 
-(plan nil)
+(plan 15)
 
 (defmacro with-vector-parsing-test ((target) &body body)
   `(progn

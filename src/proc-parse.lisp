@@ -32,14 +32,11 @@
            :match?
            :match-case
            :match-i-case
-           :eof
            :match-failed)
   (:use :cl))
 (in-package :proc-parse)
 
 (define-condition match-failed (error) ())
-
-(define-condition eof (condition) ())
 
 (defun convert-case-conditions (var chars)
   (cond
@@ -56,19 +53,30 @@
            `(= ,var ,chars)))))
 
 (defun typed-case-tagbodies (var &rest cases)
-  (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
-                                                                 collect (gensym))))
-        (end (gensym "END")))
-    `(,@(loop for (chars . body) in cases
-              for i from 0
-              collect `(when ,(convert-case-conditions var chars)
-                         (go ,(aref tags i))))
-      ,@(loop for case in cases
-              for i from 0
-              append `(,(aref tags i)
-                       ,@(cdr case)
-                       (go ,end)))
-      ,end)))
+  (cond
+    ((null cases) nil)
+    ((= 1 (length cases))
+     `((when ,(convert-case-conditions var (car (first cases)))
+         ,@(cdr (first cases)))))
+    ((and (= 2 (length cases))
+          (eq (car (second cases)) 'otherwise))
+     `((unless ,(convert-case-conditions var (car (first cases)))
+         ,@(cdr (second cases)))
+       ,@(cdr (first cases))))
+    (t
+     (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
+                                                                    collect (gensym))))
+           (end (gensym "END")))
+       `(,@(loop for (chars . body) in cases
+                 for i from 0
+                 collect `(when ,(convert-case-conditions var chars)
+                            (go ,(aref tags i))))
+         ,@(loop for case in cases
+                 for i from 0
+                 append `(,(aref tags i)
+                          ,@(cdr case)
+                          (go ,end)))
+         ,end)))))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
@@ -219,7 +227,7 @@
      t))
 
 (defmacro with-string-parsing ((data &key start end) &body body)
-  (with-gensyms (g-end elem p)
+  (with-gensyms (g-end elem p body-block)
     (once-only (data)
       `(let ((,elem #\Nul)
              (,p ,(if start
@@ -228,12 +236,12 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type fixnum ,p ,g-end)
-                  (type character ,elem)
-                  (type simple-string ,data))
+         (declare (type simple-string ,data)
+                  (type fixnum ,p ,g-end)
+                  (type character ,elem))
          (macrolet ((advance (&optional (step 1))
                       `(or (advance* ,step)
-                           (error 'eof)))
+                           (go :eof)))
                     (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
@@ -331,19 +339,24 @@
                                        '((otherwise (error 'match-failed))))))))
            #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
            (labels ((eofp ()
+                      (declare (optimize (speed 3) (safety 0) (debug 0)))
                       (<= ,g-end ,p))
                     (current () (the character ,elem))
                     (pos () (the fixnum ,p)))
              (declare (ftype (function () fixnum) pos)
                       (ftype (function () character) current)
                       (inline pos current eofp))
-             (when (eofp)
-               (error 'eof))
-             (setq ,elem (aref ,data ,p))
-             ,@body))))))
+             (block ,body-block
+               (tagbody
+                  (when (eofp)
+                    (go :eof))
+                  (setq ,elem (aref ,data ,p))
+                  ,@body
+                  (return-from ,body-block ,p)
+                :eof))))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
-  (with-gensyms (g-end elem p)
+  (with-gensyms (g-end elem p body-block)
     (once-only (data)
       `(let ((,elem 0)
              (,p ,(if start
@@ -352,11 +365,12 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type fixnum ,p ,g-end)
+         (declare (type octets ,data)
+                  (type fixnum ,p ,g-end)
                   (type (unsigned-byte 8) ,elem))
          (macrolet ((advance (&optional (step 1))
                       `(or (advance* ,step)
-                           (error 'eof)))
+                           (go :eof)))
                     (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
@@ -474,10 +488,14 @@
              (declare (ftype (function () fixnum) pos)
                       (ftype (function () character) current)
                       (inline pos current eofp))
-             (when (eofp)
-               (error 'eof))
-             (setq ,elem (aref ,data ,p))
-             ,@body))))))
+             (block ,body-block
+               (tagbody
+                  (when (eofp)
+                    (go :eof))
+                  (setq ,elem (aref ,data ,p))
+                  ,@body
+                  (return-from ,body-block ,p)
+                :eof))))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
   (let ((data-type (variable-type* data env)))
