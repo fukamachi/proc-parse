@@ -388,9 +388,9 @@
                          (if (or ,@(loop for el in elems
                                          if (and (consp el)
                                                  (eq (car el) 'not))
-                                           collect `(not (= ,(char-code (cadr el)) ,elem))
+                                           collect `(not (= ,(char-code (cadr el)) ,',elem))
                                          else
-                                           collect `(= ,(char-code el) ,elem)))
+                                           collect `(= ,(char-code el) ,',elem)))
                              (advance)
                              (error 'match-failed))))
                     (skip* (&rest elems)
