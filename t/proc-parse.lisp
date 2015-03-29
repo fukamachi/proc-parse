@@ -7,7 +7,7 @@
                           :skip))
 (in-package :proc-parse-test)
 
-(plan nil)
+(plan 4)
 
 (let ((str "Tuesday"))
   (is (with-vector-parsing (str)
@@ -32,7 +32,7 @@
          ("Thu" (match? "rsday"))
          ("Fri" (match? "day"))
          ("Sat" (match? "urday"))))
-      7))
+      nil))
 
 (let ((data (babel:string-to-octets "Tuesday")))
   (declare (type (simple-array (unsigned-byte 8) (*)) data))

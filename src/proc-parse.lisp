@@ -80,7 +80,7 @@
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
       (ensure-cons vec-and-options)
-    (with-gensyms (otherwise end-tag)
+    (with-gensyms (otherwise end-tag body-block res)
       (labels ((case-candidates (el)
                  (cond
                    ((not case-insensitive) el)
@@ -137,10 +137,11 @@
                                       (t
                                        (push (with-gensyms (eofp)
                                                `(,(case-candidates el)
-                                                 (let ((,eofp (advance*)))
-                                                   ,@(cdr (car cases))
-                                                   (and ,eofp
-                                                        (go :eof)))))
+                                                 (let ((,eofp (advance*))
+                                                       (,res (progn ,@(cdr (car cases)))))
+                                                   (if ,eofp
+                                                       (return-from ,body-block ,res)
+                                                       (go :eof)))))
                                              res-cases)))))
                                 map)
                        res-cases)))))
@@ -148,17 +149,18 @@
           (when (eq (caar (last cases)) 'otherwise)
             (setq otherwise-case (car (last cases))
                   cases (butlast cases)))
-          `(tagbody
-              ,@(apply #'typed-case-tagbodies elem-var
-                       (append
-                        (build-case 0 cases vec)
-                        `((otherwise (go ,otherwise)))))
-              (go ,end-tag)
-              ,otherwise
-              ,@(when otherwise-case
-                  `((unless (eofp)
-                      ,@(cdr otherwise-case))))
-              ,end-tag))))))
+          `(block ,body-block
+             (tagbody
+                ,@(apply #'typed-case-tagbodies elem-var
+                         (append
+                          (build-case 0 cases vec)
+                          `((otherwise (go ,otherwise)))))
+                (go ,end-tag)
+                ,otherwise
+                ,@(when otherwise-case
+                    `((unless (eofp)
+                        (return-from ,body-block (progn ,@(cdr otherwise-case))))))
+                ,end-tag)))))))
 
 (defun variable-type (var &optional env)
   (declare (ignorable env))
@@ -401,9 +403,9 @@
                              (unless (or ,@(loop for el in elems
                                                  if (and (consp el)
                                                          (eq (car el) 'not))
-                                                   collect `(not (= ,(cadr el) ,',elem))
+                                                   collect `(not (= ,(char-code (cadr el)) ,',elem))
                                                  else
-                                                   collect `(= ,el ,',elem)))
+                                                   collect `(= ,(char-code el) ,',elem)))
                                (return))
                              (or (advance*) (return))))))
                     (skip+ (&rest elems)
