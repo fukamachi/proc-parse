@@ -19,6 +19,7 @@
            :current
            :pos
            :advance
+           :advance*
            :skip
            :skip*
            :skip+
@@ -80,7 +81,7 @@
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
       (ensure-cons vec-and-options)
-    (with-gensyms (otherwise end-tag body-block res)
+    (with-gensyms (otherwise end-tag vector-case-block)
       (labels ((case-candidates (el)
                  (cond
                    ((not case-insensitive) el)
@@ -135,13 +136,10 @@
                                                     `((otherwise (go ,otherwise))))))
                                         res-cases))
                                       (t
-                                       (push (with-gensyms (eofp)
-                                               `(,(case-candidates el)
-                                                 (let ((,eofp (advance*))
-                                                       (,res (progn ,@(cdr (car cases)))))
-                                                   (if ,eofp
-                                                       (return-from ,body-block ,res)
-                                                       (go :eof)))))
+                                       (push `(,(case-candidates el)
+                                               (advance*)
+                                               (return-from ,vector-case-block
+                                                 (progn ,@(cdr (car cases)))))
                                              res-cases)))))
                                 map)
                        res-cases)))))
@@ -149,7 +147,7 @@
           (when (eq (caar (last cases)) 'otherwise)
             (setq otherwise-case (car (last cases))
                   cases (butlast cases)))
-          `(block ,body-block
+          `(block ,vector-case-block
              (tagbody
                 ,@(apply #'typed-case-tagbodies elem-var
                          (append
@@ -158,8 +156,9 @@
                 (go ,end-tag)
                 ,otherwise
                 ,@(when otherwise-case
-                    `((unless (eofp)
-                        (return-from ,body-block (progn ,@(cdr otherwise-case))))))
+                    `(unless (eofp)
+                       (return-from ,vector-case-block
+                         (progn ,@(cdr otherwise-case)))))
                 ,end-tag)))))))
 
 (defun variable-type (var &optional env)
@@ -207,25 +206,25 @@
 
 (defun string-skip (elem-var elems)
   (check-skip-elems elems)
-  `(if (or ,@(loop for el in elems
-                   if (and (consp el)
-                           (eq (car el) 'not))
-                     collect `(not (char= ,(cadr el) ,elem-var))
-                   else
-                     collect `(char= ,el ,elem-var)))
-       (advance)
-       (error 'match-failed)))
+  `(when (or ,@(loop for el in elems
+                     if (and (consp el)
+                             (eq (car el) 'not))
+                       collect `(not (char= ,(cadr el) ,elem-var))
+                     else
+                       collect `(char= ,el ,elem-var)))
+     (advance*)
+     t))
 
 (defun octets-skip (elem-var elems)
   (check-skip-elems elems)
-  `(if (or ,@(loop for el in elems
-                   if (and (consp el)
-                           (eq (car el) 'not))
-                     collect `(not (= ,(char-code (cadr el)) ,elem-var))
-                   else
-                     collect `(= ,(char-code el) ,elem-var)))
-       (advance)
-       (error 'match-failed)))
+  `(when (or ,@(loop for el in elems
+                     if (and (consp el)
+                             (eq (car el) 'not))
+                       collect `(not (= ,(char-code (cadr el)) ,elem-var))
+                     else
+                       collect `(= ,(char-code el) ,elem-var)))
+     (advance*)
+     t))
 
 (defmacro with-string-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p body-block)
@@ -237,7 +236,7 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type string ,data)
+         (declare (type simple-string ,data)
                   (type fixnum ,p ,g-end)
                   (type character ,elem))
          (macrolet ((advance (&optional (step 1))
@@ -284,18 +283,17 @@
                          (skip* ,@elems)))
                     (skip? (&rest elems)
                       (check-skip-elems elems)
-                      `(ignore-some-conditions (match-failed)
-                         (skip ,@elems)))
+                      (string-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until ,(if (symbolp fn)
-                                        `(,fn ,',elem)
-                                        `(funcall ,fn ,',elem))
-                             do (advance)))
+                      `(loop until (or ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                       (not (advance*)))))
                     (skip-while (fn)
-                      `(loop while ,(if (symbolp fn)
-                                        `(,fn ,',elem)
-                                        `(funcall ,fn ,',elem))
-                             do (advance)))
+                      `(loop while (and ,(if (symbolp fn)
+                                             `(,fn ,',elem)
+                                             `(funcall ,fn ,',elem))
+                                        (advance*))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start main)
                         `(let ((,start ,',p))
@@ -414,18 +412,17 @@
                          (skip* ,@elems)))
                     (skip? (&rest elems)
                       (check-skip-elems elems)
-                      `(ignore-some-conditions (match-failed)
-                         (skip ,@elems)))
+                      (octets-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until ,(if (symbolp fn)
-                                        `(,fn (code-char ,',elem))
-                                        `(funcall ,fn (code-char ,',elem)))
-                             do (advance)))
+                      `(loop until (or ,(if (symbolp fn)
+                                            `(,fn ,',elem)
+                                            `(funcall ,fn ,',elem))
+                                       (not (advance*)))))
                     (skip-while (fn)
-                      `(loop while ,(if (symbolp fn)
-                                        `(,fn (code-char ,',elem))
-                                        `(funcall ,fn (code-char ,',elem)))
-                             do (advance)))
+                      `(loop while (and ,(if (symbolp fn)
+                                             `(,fn ,',elem)
+                                             `(funcall ,fn ,',elem))
+                                        (advance*))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start main)
                         `(let ((,start ,',p))
