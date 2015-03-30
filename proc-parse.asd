@@ -22,7 +22,7 @@
   :components ((:module "src"
                 :components
                 ((:file "proc-parse"))))
-  :description ""
+  :description "Procedural vector parser"
   :long-description
   #.(with-open-file (stream (merge-pathnames
                              #p"README.markdown"
