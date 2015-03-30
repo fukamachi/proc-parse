@@ -28,6 +28,288 @@ I believe we don't have to give up speed for the readability while we use Common
                     (return scheme)))))))
 ```
 
+## API
+
+### with-vector-parsing
+
+```Lisp
+(with-vector-parsing ("It's Tuesday!" :start 5 :end 12)
+  (bind (str (skip-until
+              (lambda (c)
+                (declare (ignore c))
+                (eofp))))
+    (print str))) ; "Tuesday"
+
+(with-vector-parsing ((babel:string-to-octets "It's Tuesday!") :start 5 :end 12)
+  (bind (str (skip-until
+              (lambda (c)
+                (declare (ignore c))
+                (eofp))))
+    (print str))) ; "Tuesday"
+```
+
+### with-string-parsing
+
+```Lisp
+(with-string-parsing ("It's Tuesday!" :start 5 :end 12)
+  (bind (str (skip-until
+              (lambda (c)
+                (declare (ignore c))
+                (eofp))))
+    (print str))) ; "Tuesday"
+```
+
+### with-octets-parsing
+
+```Lisp
+(with-octets-parsing ((babel:string-to-octets "It's Tuesday!") :start 5 :end 12)
+  (bind (str (skip-until
+              (lambda (c)
+                (declare (ignore c))
+                (eofp))))
+    (print str))) ; "Tuesday"
+```
+
+### eofp
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (eofp)) ; NIL
+  (match "hello")
+  (print (eofp))) ; T
+```
+
+### current
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (skip #\h)
+  (print (current))) ; #\e
+```
+
+### pos
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (pos)) ; 0
+  (skip #\h)
+  (print (pos))) ; 1
+```
+
+### advance
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (advance)
+  (print (current)) ; #\e
+  (match "ello")
+  (print (current)) ; #\o
+  (advance)
+  (print "Hi")) ; "Hi" won't displayed.
+```
+
+### advance*
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (advance*)
+  (print (current)) ; #\e
+  (match "ello")
+  (print (current)) ; #\o
+  (advance*)
+  (print (current)) ; #\o
+  (print "Hi")) ; "Hi"
+```
+
+### skip
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (skip #\h)
+  (print (current)) ; #\e
+  (skip (not #\h))
+  (print (current)) ; #\l
+  (skip #\f))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### skip*
+
+```Lisp
+(with-vector-parsing ("hello")
+  (skip* #\h)
+  (print (current)) ; #\e
+  (skip* (not #\l))
+  (print (current)) ; #\l
+  (skip* #\l)
+  (print (current)) ; #\o
+  (skip* #\f))
+```
+
+### skip+
+
+```Lisp
+(with-vector-parsing ("hello")
+  (skip+ #\h)
+  (print (current)) ; #\e
+  (skip* (not #\l))
+  (print (current)) ; #\l
+  (skip+ #\l)
+  (print (current)) ; #\o
+  (skip+ #\f))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### skip?
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (skip? #\h)
+  (print (current)) ; #\e
+  (skip? (not #\h))
+  (print (current)) ; #\l
+  (skip? #\f)) ; MATCH-FAILED won't be raised.
+```
+
+### skip-until
+
+```Lisp
+(with-vector-parsing ("hello")
+  (skip-until (lambda (char) (char= char #\o)))
+  (print (current)) ; #\o
+  (print (eofp)) ; NIL
+  (skip-until (lambda (char) (char= char #\f)))
+  (print (eofp))) ; T
+```
+
+### skip-while
+
+```Lisp
+(with-vector-parsing ("hello")
+  (skip-while (lambda (char) (char/= char #\o)))
+  (print (current)) ; #\o
+  (print (eofp)) ; NIL
+  (skip-while (lambda (char) (char/= char #\f)))
+  (print (eofp))) ; T
+```
+
+### bind
+
+```Lisp
+(with-vector-parsing ("hello")
+  (bind (str1 (skip* (not #\l)))
+    (print str1)) ; "he"
+  (bind (str2 (skip* (not #\f)))
+    (print str2))) ; "llo"
+```
+
+### match
+
+```Lisp
+(with-vector-parsing ("hello")
+  (match "he")
+  (print (current)) ; #\l
+  (match "l" "ll")
+  (print (current)) ; #\o
+  (match "f"))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### match-i
+
+```Lisp
+(with-vector-parsing ("hello")
+  (match-i "He")
+  (print (current)) ; #\l
+  (match-i "L" "LL")
+  (print (current)) ; #\o
+  (match-i "F"))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### match?
+
+```Lisp
+(with-vector-parsing ("hello")
+  (match? "he")
+  (print (current)) ; #\l
+  (match? "l" "ll")
+  (print (current)) ; #\o
+  (match? "f")) ; MATCH-FAILED won't be raised.
+```
+
+### match-case
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print
+   (match-case
+    ("he" 0)
+    ("ll" 1)
+    (otherwise 2))) ; 0
+  (print (current)) ; #\l
+  (print
+   (match-case
+    ("he" 0)
+    ("ll" 1)
+    (otherwise 2))) ; 1
+  (print (current)) ; #\o
+  (print
+   (match-case
+    ("he" 0)
+    ("ll" 1)
+    (otherwise 2))) ; 2
+  (print (current)) ; #\o
+  (print
+   (match-case
+    ("he" 0)
+    ("ll" 1))))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### match-i-case
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print
+   (match-i-case
+    ("He" 0)
+    ("LL" 1)
+    (otherwise 2))) ; 0
+  (print (current)) ; #\l
+  (print
+   (match-i-case
+    ("He" 0)
+    ("LL" 1)
+    (otherwise 2))) ; 1
+  (print (current)) ; #\o
+  (print
+   (match-i-case
+    ("He" 0)
+    ("LL" 1)
+    (otherwise 2))) ; 2
+  (print (current)) ; #\o
+  (print
+   (match-i-case
+    ("He" 0)
+    ("LL" 1))))
+;; => Condition MATCH-FAILED was signalled.
+```
+
+### match-failed
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (skip #\f))
+;; => Condition MATCH-FAILED was signalled.
+```
+
 ## Author
 
 * Eitaro Fukamachi
