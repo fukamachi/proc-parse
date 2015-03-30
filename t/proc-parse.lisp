@@ -30,9 +30,8 @@
     (is (current)
         #\b
         "can increment the current position.")
-    (is-error (advance)
-              'eof
-              "can raise the eof error without rest characters.")))
+    (advance)
+    (fail "won't be executed after EOF")))
 
 (subtest "advance*"
   (with-vector-parsing-test ("ab")

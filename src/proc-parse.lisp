@@ -295,17 +295,14 @@
                                              `(funcall ,fn ,',elem))
                                         (advance*))))
                     (bind ((symb &body bind-forms) &body body)
-                      (with-gensyms (start main)
+                      (with-gensyms (start)
                         `(let ((,start ,',p))
-                           (flet ((,main ()
-                                    (let ((,symb (subseq ,',data ,start ,',p)))
-                                      ,@body)))
-                             (handler-bind ((eof
-                                              (lambda (e)
-                                                (declare (ignore e))
-                                                (,main))))
-                               ,@bind-forms)
-                             (,main)))))
+                           ,@bind-forms
+                           (prog1
+                               (let ((,symb (subseq ,',data ,start ,',p)))
+                                 ,@body)
+                             (when (eofp)
+                               (go :eof))))))
                     (match (&rest vectors)
                       `(match-case
                         ,@(loop for vec in vectors
@@ -424,17 +421,14 @@
                                              `(funcall ,fn ,',elem))
                                         (advance*))))
                     (bind ((symb &body bind-forms) &body body)
-                      (with-gensyms (start main)
+                      (with-gensyms (start)
                         `(let ((,start ,',p))
-                           (flet ((,main ()
-                                    (let ((,symb (babel:octets-to-string ,',data :start ,start :end ,',p)))
-                                      ,@body)))
-                             (handler-bind ((eof
-                                              (lambda (e)
-                                                (declare (ignore e))
-                                                (,main))))
-                               ,@bind-forms)
-                             (,main)))))
+                           ,@bind-forms
+                           (prog1
+                               (let ((,symb (babel:octets-to-string ,',data :start ,start :end ,',p)))
+                                 ,@body)
+                             (when (eofp)
+                               (go :eof))))))
                     (match (&rest vectors)
                       `(match-case
                         ,@(loop for vec in vectors
