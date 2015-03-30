@@ -32,6 +32,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### with-vector-parsing
 
+- can parse both string and octets.
+
 ```Lisp
 (with-vector-parsing ("It's Tuesday!" :start 5 :end 12)
   (bind (str (skip-until
@@ -50,6 +52,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### with-string-parsing
 
+- can parse string.
+
 ```Lisp
 (with-string-parsing ("It's Tuesday!" :start 5 :end 12)
   (bind (str (skip-until
@@ -60,6 +64,8 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### with-octets-parsing
+
+- can parse octets.
 
 ```Lisp
 (with-octets-parsing ((babel:string-to-octets "It's Tuesday!") :start 5 :end 12)
@@ -72,6 +78,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### eofp
 
+- can return EOF or not.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (print (eofp)) ; NIL
@@ -80,6 +88,8 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### current
+
+- can return the character of the current position.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -90,6 +100,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### pos
 
+- can return the current position.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (print (pos)) ; 0
@@ -98,6 +110,9 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### advance
+
+- can put the current postion forward.
+- can cease parsing with EOF.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -111,6 +126,9 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### advance*
+
+- can put the current postion forward.
+- just returns NIL with EOF.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -126,6 +144,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### skip
 
+- can skip the specified character.
+- can raise MATCH-FAILED error with unmatched characters.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (print (current)) ; #\h
@@ -139,6 +160,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### skip*
 
+- can skip some straignt specified characters.
+- just returns NIL with unmatched characters.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (skip* #\h)
@@ -147,10 +171,13 @@ I believe we don't have to give up speed for the readability while we use Common
   (print (current)) ; #\l
   (skip* #\l)
   (print (current)) ; #\o
-  (skip* #\f))
+  (skip* #\f)) ; MATCH-FAILED won't be raised.
 ```
 
 ### skip+
+
+- can skip some straignt specified characters.
+- can raise MATCH-FAILED error with unmatched characters.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -166,6 +193,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### skip?
 
+- can skip the specified character.
+- just returns NIL with unmatched characters.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (print (current)) ; #\h
@@ -178,6 +208,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### skip-until
 
+- can skip until form returned T or parsing reached EOF.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (skip-until (lambda (char) (char= char #\o)))
@@ -188,6 +220,8 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### skip-while
+
+- can skip while form returns T and parsing doesn't reach EOF.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -200,15 +234,20 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### bind
 
+- can bind subseqed string.
+
 ```Lisp
 (with-vector-parsing ("hello")
-  (bind (str1 (skip* (not #\l)))
+  (bind (str1 (skip-until (lambda (c) (char= c #\l))))
     (print str1)) ; "he"
   (bind (str2 (skip* (not #\f)))
     (print str2))) ; "llo"
 ```
 
 ### match
+
+- can skip matched one of the specified strings.
+- can raise MATCH-FAILED error with unmatched characters.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -222,6 +261,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### match-i
 
+- can skip case-insensitively matched one of the specified strings.
+- can raise MATCH-FAILED error with case-insensitively unmatched characters.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (match-i "He")
@@ -234,6 +276,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### match?
 
+- can skip matched one of the specified strings.
+- just returns NIL with unmatched characters.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (match? "he")
@@ -244,6 +289,8 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### match-case
+
+- can dispatch to the matched case and return the last value of the case.
 
 ```Lisp
 (with-vector-parsing ("hello")
@@ -274,6 +321,8 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### match-i-case
 
+- can dispatch to the case-insensitively matched case and return the last value of the case.
+
 ```Lisp
 (with-vector-parsing ("hello")
   (print
@@ -302,6 +351,8 @@ I believe we don't have to give up speed for the readability while we use Common
 ```
 
 ### match-failed
+
+- is the condition representing failure of matching.
 
 ```Lisp
 (with-vector-parsing ("hello")
