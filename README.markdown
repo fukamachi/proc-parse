@@ -3,8 +3,10 @@
 [![Build Status](https://travis-ci.org/fukamachi/proc-parse.svg?branch=master)](https://travis-ci.org/fukamachi/proc-parse)
 [![Coverage Status](https://coveralls.io/repos/fukamachi/proc-parse/badge.svg?branch=master)](https://coveralls.io/r/fukamachi/proc-parse)
 
-    Question: Are these parser macros for speed or just to make your application look cool?<br>
-    Answer: Both.
+<blockquote>
+Question: Are these parser macros for speed or just to make your application look cool?<br>
+Answer: Both.
+</blockquote>
 
 This is a string/octets parser library for Common Lisp with speed and readability in mind. Unlike other libraries, the code is not a pattern-matching-like, but a char-by-char procedural parser.
 
