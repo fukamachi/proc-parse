@@ -20,7 +20,7 @@ before_script:
 
 script:
   - if [ $COVERALLS ]; then
-      cl -l prove -l cl-coveralls
+      cl -l prove -l cl-coveralls \
          -e '(or (coveralls:with-coveralls (:exclude "t")
                    (prove:run :proc-parse-test))
                  (uiop:quit -1))'
