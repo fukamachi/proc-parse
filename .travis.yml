@@ -19,8 +19,5 @@ before_script:
   - git clone https://github.com/fukamachi/cl-coveralls ~/lisp/cl-coveralls
 
 script:
-  - [ $COVERALLS ] && cl -l prove -l cl-coveralls
-      -e '(or (coveralls:with-coveralls (:exclude "t")
-                (prove:run :proc-parse-test))
-              (uiop:quit -1))'
-  - [ ! $COVERALLS ] && cl -l prove -e '(or (prove:run :proc-parse-test) (uiop:quit -1))'
+  - if [ $COVERALLS ]; then cl -l prove -l cl-coveralls -e '(or (coveralls:with-coveralls (:exclude "t") (prove:run :proc-parse-test)) (uiop:quit -1))'; fi
+  - if [ ! $COVERALLS ]; then cl -l prove -e '(or (prove:run :proc-parse-test) (uiop:quit -1))'; fi
