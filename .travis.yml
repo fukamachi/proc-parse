@@ -7,6 +7,9 @@ env:
     - LISP=sbcl COVERALLS=true
     - LISP=ccl
     - LISP=clisp
+    - LISP=allegro
+    - LISP=abcl
+    - LISP=ecl
 
 install:
   # Install cl-travis
