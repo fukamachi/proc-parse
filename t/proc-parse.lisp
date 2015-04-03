@@ -87,73 +87,37 @@
         "doesn't skip any characters when unmatched character spcified.")))
 
 (subtest "skip-until"
-  (subtest "with-string-parsing"
-    (with-string-parsing ("aaab")
-      (skip-until (lambda (c) (char/= c #\a)))
-      (is (current)
-          #\b
-          "can skip until form returns T.")
-      (skip-until (lambda (c) (char/= c #\c)))
-      (is (current)
-          #\b
-          "can skip until eof.")))
-
-  (subtest "with-octets-parsing"
-    (with-octets-parsing ((babel:string-to-octets "aaab"))
-      (skip-until (lambda (c) (/= c (char-code  #\a))))
-      (is (current)
-          #\b
-          "can skip until form returns T.")
-      (skip-until (lambda (c) (/= c (char-code #\c))))
-      (is (current)
-          #\b
-          "can skip until eof."))))
+  (with-vector-parsing ("aaab")
+    (skip-until (lambda (c) (char/= c #\a)))
+    (is (current)
+        #\b
+        "can skip until form returns T.")
+    (skip-until (lambda (c) (char/= c #\c)))
+    (is (current)
+        #\b
+        "can skip until eof.")))
 
 (subtest "skip-while"
-  (subtest "with-string-parsing"
-    (with-string-parsing ("aaab")
-      (skip-while (lambda (c) (char= c #\a)))
-      (is (current)
-          #\b
-          "can skip when form returns T.")
-      (skip-while (lambda (c) (char= c #\b)))
-      (is (current)
-          #\b
-          "can skip until eof.")))
-
-  (subtest "with-octets-parsing"
-    (with-octets-parsing ((babel:string-to-octets "aaab"))
-      (skip-while (lambda (c) (= c (char-code #\a))))
-      (is (current)
-          #\b
-          "can skip when form returns T.")
-      (skip-while (lambda (c) (= c (char-code #\b))))
-      (is (current)
-          #\b
-          "can skip until eof."))))
+  (with-vector-parsing ("aaab")
+    (skip-while (lambda (c) (char= c #\a)))
+    (is (current)
+        #\b
+        "can skip when form returns T.")
+    (skip-while (lambda (c) (char= c #\b)))
+    (is (current)
+        #\b
+        "can skip until eof.")))
 
 (subtest "bind"
-  (subtest "with-string-parsing"
-    (with-string-parsing ("aaab")
-      (bind (str1 (skip-while (lambda (c) (char= c #\a))))
-        (is str1
-            "aaa"
-            "can bind string with form."))
-      (bind (str2 (skip-while (lambda (c) (char= c #\b))))
-        (is str2
-            "b"
-            "can bind string until eof."))))
-
-  (subtest "with-octets-parsing"
-    (with-octets-parsing ((babel:string-to-octets "aaab"))
-      (bind (str1 (skip-while (lambda (c) (= c (char-code #\a)))))
-        (is str1
-            "aaa"
-            "can bind string with form."))
-      (bind (str2 (skip-while (lambda (c) (= c (char-code #\b)))))
-        (is str2
-            "b"
-            "can bind string until eof.")))))
+  (with-vector-parsing ("aaab")
+    (bind (str1 (skip-while (lambda (c) (char= c #\a))))
+      (is str1
+          "aaa"
+          "can bind string with form."))
+    (bind (str2 (skip-while (lambda (c) (char= c #\b))))
+      (is str2
+          "b"
+          "can bind string until eof."))))
 
 (subtest "match"
   (with-vector-parsing-test ("abc")
