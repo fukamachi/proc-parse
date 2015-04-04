@@ -293,64 +293,72 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ### match-case
 
-- can dispatch to the matched case and return the last value of the case.
+- can dispatch to the matched case.
+- aborts parsing when reaching EOF.
 
 ```Lisp
 (with-vector-parsing ("hello")
-  (print
-   (match-case
-    ("he" 0)
-    ("ll" 1)
-    (otherwise 2))) ; 0
+  (match-case
+   ("he" (print 0))
+   ("ll" (print 1))
+   (otherwise (print 2))) ; 0
   (print (current)) ; #\l
-  (print
-   (match-case
-    ("he" 0)
-    ("ll" 1)
-    (otherwise 2))) ; 1
+  (match-case
+   ("he" (print 0))
+   ("ll" (print 1))
+   (otherwise (print 2))) ; 1
   (print (current)) ; #\o
-  (print
-   (match-case
-    ("he" 0)
-    ("ll" 1)
-    (otherwise 2))) ; 2
+  (match-case
+   ("he" (print 0))
+   ("ll" (print 1))
+   (otherwise (print 2))) ; 2
   (print (current)) ; #\o
-  (print
-   (match-case
-    ("he" 0)
-    ("ll" 1))))
+  (match-case
+   ("he" (print 0))
+   ("ll" (print 1))))
 ;; => Condition MATCH-FAILED was signalled.
+
+(with-vector-parsing ("hello")
+  (print
+   (match-case
+    ("hello" 0))) ;; Nothing will be printed.
+  (print "It shold not be printed.")) ;; Nothing will be printed.
+;; => NIL
 ```
 
 ### match-i-case
 
-- can dispatch to the case-insensitively matched case and return the last value of the case.
+- can dispatch to the case-insensitively matched case.
+- aborts parsing when reaching EOF.
 
 ```Lisp
 (with-vector-parsing ("hello")
-  (print
-   (match-i-case
-    ("He" 0)
-    ("LL" 1)
-    (otherwise 2))) ; 0
+  (match-i-case
+   ("He" (print 0))
+   ("LL" (print 1))
+   (otherwise (print 2))) ; 0
   (print (current)) ; #\l
-  (print
-   (match-i-case
-    ("He" 0)
-    ("LL" 1)
-    (otherwise 2))) ; 1
+  (match-i-case
+   ("He" (print 0))
+   ("LL" (print 1))
+   (otherwise (print 2))) ; 1
   (print (current)) ; #\o
-  (print
-   (match-i-case
-    ("He" 0)
-    ("LL" 1)
-    (otherwise 2))) ; 2
+  (match-i-case
+   ("He" (print 0))
+   ("LL" (print 1))
+   (otherwise (print 2))) ; 2
   (print (current)) ; #\o
-  (print
-   (match-i-case
-    ("He" 0)
-    ("LL" 1))))
+  (match-i-case
+   ("He" (print 0))
+   ("LL" (print 1))))
 ;; => Condition MATCH-FAILED was signalled.
+
+(with-vector-parsing ("hello")
+  (print
+   (match-i-case
+    ("Hello" 0))) ;; Nothing will be printed.
+  (print "It shold not be printed.")) ;; Nothing will be printed.
+;; => NIL
 ```
 
 ### match-failed
