@@ -117,7 +117,11 @@
     (bind (str2 (skip-while (lambda (c) (char= c #\b))))
       (is str2
           "b"
-          "can bind string until eof."))))
+          "can bind string until eof.")))
+  (with-vector-parsing ("a123")
+    (skip-while alpha-char-p)
+    (bind (num (skip-until alpha-char-p))
+      (is num "123" "can bind even when reached to EOF"))))
 
 (subtest "match"
   (with-vector-parsing-test ("abc")

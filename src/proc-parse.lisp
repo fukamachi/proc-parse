@@ -212,8 +212,7 @@
                        collect `(not (char= ,(cadr el) ,elem-var))
                      else
                        collect `(char= ,el ,elem-var)))
-     (advance*)
-     t))
+     (or (advance*) (go :eof))))
 
 (defun octets-skip (elem-var elems)
   (check-skip-elems elems)
@@ -223,8 +222,7 @@
                        collect `(not (= ,(char-code (cadr el)) ,elem-var))
                      else
                        collect `(= ,(char-code el) ,elem-var)))
-     (advance*)
-     t))
+     (or (advance*) (go :eof))))
 
 (defmacro with-string-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p body-block)
@@ -276,7 +274,7 @@
                                                  else
                                                    collect `(char= ,el ,',elem)))
                                (return))
-                             (or (advance*) (return))))))
+                             (or (advance*) (go :eof))))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
@@ -285,19 +283,21 @@
                       (check-skip-elems elems)
                       (string-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until (or ,(if (symbolp fn)
-                                            `(,fn ,',elem)
-                                            `(funcall ,fn ,',elem))
-                                       (not (advance*)))))
+                      `(loop until ,(if (symbolp fn)
+                                        `(,fn ,',elem)
+                                        `(funcall ,fn ,',elem))
+                             do (or (advance*) (go :eof))))
                     (skip-while (fn)
-                      `(loop while (and ,(if (symbolp fn)
-                                             `(,fn ,',elem)
-                                             `(funcall ,fn ,',elem))
-                                        (advance*))))
+                      `(loop while ,(if (symbolp fn)
+                                        `(,fn ,',elem)
+                                        `(funcall ,fn ,',elem))
+                             do (or (advance*) (go :eof))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start)
                         `(let ((,start ,',p))
-                           ,@bind-forms
+                           (tagbody
+                              ,@bind-forms
+                            :eof)
                            (prog1
                                (let ((,symb (subseq ,',data ,start ,',p)))
                                  ,@body)
@@ -402,7 +402,7 @@
                                                  else
                                                    collect `(= ,(char-code el) ,',elem)))
                                (return))
-                             (or (advance*) (return))))))
+                             (or (advance*) (go :eof))))))
                     (skip+ (&rest elems)
                       `(progn
                          (skip ,@elems)
@@ -411,19 +411,21 @@
                       (check-skip-elems elems)
                       (octets-skip ',elem elems))
                     (skip-until (fn)
-                      `(loop until (or ,(if (symbolp fn)
-                                            `(,fn (code-char ,',elem))
-                                            `(funcall ,fn (code-char ,',elem)))
-                                       (not (advance*)))))
+                      `(loop until ,(if (symbolp fn)
+                                        `(,fn (code-char ,',elem))
+                                        `(funcall ,fn (code-char ,',elem)))
+                             do (or (advance*) (go :eof))))
                     (skip-while (fn)
-                      `(loop while (and ,(if (symbolp fn)
-                                             `(,fn (code-char ,',elem))
-                                             `(funcall ,fn (code-char ,',elem)))
-                                        (advance*))))
+                      `(loop while ,(if (symbolp fn)
+                                        `(,fn (code-char ,',elem))
+                                        `(funcall ,fn (code-char ,',elem)))
+                             do (or (advance*) (go :eof))))
                     (bind ((symb &body bind-forms) &body body)
                       (with-gensyms (start)
                         `(let ((,start ,',p))
-                           ,@bind-forms
+                           (tagbody
+                              ,@bind-forms
+                            :eof)
                            (prog1
                                (let ((,symb (babel:octets-to-string ,',data :start ,start :end ,',p)))
                                  ,@body)
