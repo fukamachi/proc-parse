@@ -322,18 +322,22 @@
                                 collect `(,vec))))
                     (match-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case ,',elem (,',data)
-                         ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                               cases
-                               (append cases
-                                       '((otherwise (error 'match-failed)))))))
+                      `(prog1
+                           (vector-case ,',elem (,',data)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed))))))
+                         (when (eofp) (go :eof))))
                     (match-i-case (&rest cases)
                       (check-match-cases cases)
-                      `(vector-case ,',elem (,',data :case-insensitive t)
-                         ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                               cases
-                               (append cases
-                                       '((otherwise (error 'match-failed))))))))
+                      `(prog1
+                           (vector-case ,',elem (,',data :case-insensitive t)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed))))))
+                         (when (eofp) (go :eof)))))
            #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
            (labels ((eofp ()
                       (declare (optimize (speed 3) (safety 0) (debug 0)))
@@ -457,11 +461,13 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case ,',elem (,',data)
-                         ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                               cases
-                               (append cases
-                                       '((otherwise (error 'match-failed)))))))
+                      `(prog1
+                           (vector-case ,',elem (,',data)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed))))))
+                         (when (eofp) (go :eof))))
                     (match-i-case (&rest cases)
                       (check-match-cases cases)
                       (setf cases
@@ -471,11 +477,13 @@
                                                   (cdr case))
                                   else
                                     collect case))
-                      `(vector-case ,',elem (,',data :case-insensitive t)
-                         ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                               cases
-                               (append cases
-                                       '((otherwise (error 'match-failed))))))))
+                      `(prog1
+                           (vector-case ,',elem (,',data :case-insensitive t)
+                             ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                   cases
+                                   (append cases
+                                           '((otherwise (error 'match-failed))))))
+                         (when (eofp) (go :eof)))))
            #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
            (labels ((eofp ()
                       (<= ,g-end ,p))
