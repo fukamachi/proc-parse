@@ -241,6 +241,7 @@
                       `(or (advance* ,step)
                            (go :eof)))
                     (advance* (&optional (step 1))
+                      (declare (type fixnum step))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
                          ,@(if (= step 0)
