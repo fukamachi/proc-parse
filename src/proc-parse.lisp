@@ -338,8 +338,7 @@
                 (when (eofp)
                   (go :eof))
                 (setq ,elem (aref ,data ,p))
-                ,@body
-                (return-from ,body-block ,p)
+                (return-from ,body-block (progn ,@body))
               :eof)))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
@@ -400,8 +399,7 @@
                 (when (eofp)
                   (go :eof))
                 (setq ,elem (aref ,data ,p))
-                ,@body
-                (return-from ,body-block ,p)
+                (return-from ,body-block (progn ,@body))
               :eof)))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
