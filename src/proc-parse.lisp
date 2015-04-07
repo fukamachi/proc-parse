@@ -38,7 +38,16 @@
   (:use :cl))
 (in-package :proc-parse)
 
-(define-condition match-failed (error) ())
+(define-condition match-failed (error)
+  ((elem :initarg :elem
+         :initform nil)
+   (expected :initarg :expected
+             :initform nil))
+  (:report (lambda (condition stream)
+             (with-slots (elem expected) condition
+               (format stream
+                       "Match failed~:[~;~:*: ~S~]~:[~;~:* (expected: ~{~S~^, ~})~]"
+                       (ensure-char-elem elem) expected)))))
 
 (defun convert-case-conditions (var chars)
   (cond
@@ -209,6 +218,10 @@
 (defmacro subseq* (data start &optional end)
   `(subseq ,data ,start ,end))
 (defmacro get-elem (form) form)
+(defun ensure-char-elem (elem)
+  (if (characterp elem)
+      elem
+      (code-char elem)))
 
 (defmacro parsing-macrolet ((elem data p end)
                             (&rest macros) &body body)
@@ -245,7 +258,9 @@
                 `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                    (if (skip-conditions ,',elem ,elems)
                        (advance)
-                       (error 'match-failed))))
+                       (error 'match-failed
+                              :elem ,',elem
+                              :expected ',elems))))
               (skip* (&rest elems)
                 (check-skip-elems elems)
                 `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
