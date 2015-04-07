@@ -20,6 +20,8 @@
            :pos
            :advance
            :advance*
+           :advance-to
+           :advance-to*
            :skip
            :skip*
            :skip+
@@ -224,6 +226,20 @@
                                  (setq ,',elem
                                        (aref ,',data ,',p))
                                  t))))))
+              (advance-to (to)
+                `(or (advance-to* ,to)
+                     (go :eof)))
+              (advance-to* (to)
+                (once-only (to)
+                  `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+                     (check-type ,to fixnum)
+                     (setq ,',p ,to)
+                     (if (<= ,',end ,',p)
+                         nil
+                         (progn
+                           (setq ,',elem
+                                 (aref ,',data ,',p))
+                           t)))))
               (skip (&rest elems)
                 (check-skip-elems elems)
                 `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
