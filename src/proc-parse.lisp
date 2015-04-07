@@ -243,7 +243,7 @@
                     (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
-                         ,@(if (= step 0)
+                         ,@(if (eql step 0)
                                ()
                                `((if (<= ,',g-end ,',p)
                                      nil
@@ -375,7 +375,7 @@
                     (advance* (&optional (step 1))
                       `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                          (incf ,',p ,step)
-                         ,@(if (= step 0)
+                         ,@(if (eql step 0)
                                ()
                                `((if (<= ,',g-end ,',p)
                                      nil
