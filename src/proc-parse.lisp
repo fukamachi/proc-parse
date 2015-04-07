@@ -204,6 +204,8 @@
 (defmacro bind ((symb &body bind-forms) &body body)
   (declare (ignore symb bind-forms body)))
 
+(defmacro subseq* (data start &optional end)
+  `(subseq ,data ,start ,end))
 (defmacro get-elem (form) form)
 
 (defmacro parsing-macrolet ((elem data p end)
@@ -305,43 +307,40 @@
          (declare (type simple-string ,data)
                   (type fixnum ,p ,g-end)
                   (type character ,elem))
-         (labels ((subseq* (data start &optional end)
-                    (subseq data start end)))
-           (declare (inline subseq*))
-           (parsing-macrolet (,elem ,data ,p ,g-end)
-               ((skip-conditions (elem-var elems)
-                                 `(or ,@(loop for el in elems
-                                              if (and (consp el)
-                                                      (eq (car el) 'not))
-                                                collect `(not (char= ,(cadr el) ,elem-var))
-                                              else
-                                                collect `(char= ,el ,elem-var))))
-                (match-case (&rest cases)
+         (parsing-macrolet (,elem ,data ,p ,g-end)
+             ((skip-conditions (elem-var elems)
+                               `(or ,@(loop for el in elems
+                                            if (and (consp el)
+                                                    (eq (car el) 'not))
+                                              collect `(not (char= ,(cadr el) ,elem-var))
+                                            else
+                                              collect `(char= ,el ,elem-var))))
+              (match-case (&rest cases)
+                          (check-match-cases cases)
+                          `(prog1
+                               (vector-case ,',elem (,',data)
+                                 ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                       cases
+                                       (append cases
+                                               '((otherwise (error 'match-failed))))))
+                             (when (eofp) (go :eof))))
+              (match-i-case (&rest cases)
                             (check-match-cases cases)
                             `(prog1
-                                 (vector-case ,',elem (,',data)
+                                 (vector-case ,',elem (,',data :case-insensitive t)
                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                          cases
                                          (append cases
                                                  '((otherwise (error 'match-failed))))))
-                               (when (eofp) (go :eof))))
-                (match-i-case (&rest cases)
-                              (check-match-cases cases)
-                              `(prog1
-                                   (vector-case ,',elem (,',data :case-insensitive t)
-                                     ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                           cases
-                                           (append cases
-                                                   '((otherwise (error 'match-failed))))))
-                                 (when (eofp) (go :eof)))))
-             (block ,body-block
-               (tagbody
-                  (when (eofp)
-                    (go :eof))
-                  (setq ,elem (aref ,data ,p))
-                  ,@body
-                  (return-from ,body-block ,p)
-                :eof))))))))
+                               (when (eofp) (go :eof)))))
+           (block ,body-block
+             (tagbody
+                (when (eofp)
+                  (go :eof))
+                (setq ,elem (aref ,data ,p))
+                ,@body
+                (return-from ,body-block ,p)
+              :eof)))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
   (with-gensyms (g-end elem p body-block)
@@ -356,19 +355,31 @@
          (declare (type octets ,data)
                   (type fixnum ,p ,g-end)
                   (type (unsigned-byte 8) ,elem))
-         (labels ((subseq* (data start &optional end)
-                    (babel:octets-to-string data :start start :end end)))
-           (declare (inline subseq*))
-           (parsing-macrolet (,elem ,data ,p ,g-end)
-               ((skip-conditions (elem-var elems)
-                                 `(or ,@(loop for el in elems
-                                              if (and (consp el)
-                                                      (eq (car el) 'not))
-                                                collect `(not (= ,(char-code (cadr el)) ,elem-var))
-                                              else
-                                                collect `(= ,(char-code el) ,elem-var))))
-                (get-elem (form) `(code-char ,form))
-                (match-case (&rest cases)
+         (parsing-macrolet (,elem ,data ,p ,g-end)
+             ((skip-conditions (elem-var elems)
+                               `(or ,@(loop for el in elems
+                                            if (and (consp el)
+                                                    (eq (car el) 'not))
+                                              collect `(not (= ,(char-code (cadr el)) ,elem-var))
+                                            else
+                                              collect `(= ,(char-code el) ,elem-var))))
+              (match-case (&rest cases)
+                          (check-match-cases cases)
+                          (setf cases
+                                (loop for case in cases
+                                      if (stringp (car case))
+                                        collect (cons (babel:string-to-octets (car case))
+                                                      (cdr case))
+                                      else
+                                        collect case))
+                          `(prog1
+                               (vector-case ,',elem (,',data)
+                                 ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                       cases
+                                       (append cases
+                                               '((otherwise (error 'match-failed))))))
+                             (when (eofp) (go :eof))))
+              (match-i-case (&rest cases)
                             (check-match-cases cases)
                             (setf cases
                                   (loop for case in cases
@@ -378,43 +389,33 @@
                                         else
                                           collect case))
                             `(prog1
-                                 (vector-case ,',elem (,',data)
+                                 (vector-case ,',elem (,',data :case-insensitive t)
                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                          cases
                                          (append cases
                                                  '((otherwise (error 'match-failed))))))
-                               (when (eofp) (go :eof))))
-                (match-i-case (&rest cases)
-                              (check-match-cases cases)
-                              (setf cases
-                                    (loop for case in cases
-                                          if (stringp (car case))
-                                            collect (cons (babel:string-to-octets (car case))
-                                                          (cdr case))
-                                          else
-                                            collect case))
-                              `(prog1
-                                   (vector-case ,',elem (,',data :case-insensitive t)
-                                     ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                           cases
-                                           (append cases
-                                                   '((otherwise (error 'match-failed))))))
-                                 (when (eofp) (go :eof)))))
-             (block ,body-block
-               (tagbody
-                  (when (eofp)
-                    (go :eof))
-                  (setq ,elem (aref ,data ,p))
-                  ,@body
-                  (return-from ,body-block ,p)
-                :eof))))))))
+                               (when (eofp) (go :eof)))))
+           (block ,body-block
+             (tagbody
+                (when (eofp)
+                  (go :eof))
+                (setq ,elem (aref ,data ,p))
+                ,@body
+                (return-from ,body-block ,p)
+              :eof)))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
   (let ((data-type (variable-type* data env)))
     (case data-type
       (string `(with-string-parsing (,data :start ,start :end ,end) ,@body))
-      (octets `(with-octets-parsing (,data :start ,start :end ,end) ,@body))
+      (octets `(macrolet ((get-elem (form) `(code-char ,form))
+                          (subseq* (data start &optional end)
+                            `(babel:octets-to-string ,data :start ,start :end ,end)))
+                 (with-octets-parsing (,data :start ,start :end ,end) ,@body)))
       (otherwise (once-only (data)
                    `(etypecase ,data
                       (string (with-string-parsing (,data :start ,start :end ,end) ,@body))
-                      (octets (with-octets-parsing (,data :start ,start :end ,end) ,@body))))))))
+                      (octets (macrolet ((get-elem (form) `(code-char ,form))
+                                         (subseq* (data start &optional end)
+                                           `(babel:octets-to-string ,data :start ,start :end ,end)))
+                                (with-octets-parsing (,data :start ,start :end ,end) ,@body)))))))))
