@@ -140,7 +140,7 @@
                                             ,(if (= (length (caar cases)) (1+ i))
                                                  `(progn ,@(cdr (car cases))
                                                          (go ,end-tag))
-                                                 `(go ,otherwise)))
+                                                 `(go :eof)))
                                           ,@(apply #'typed-case-tagbodies elem-var
                                                    (append
                                                     next-case
