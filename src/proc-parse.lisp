@@ -306,11 +306,13 @@
                 (with-gensyms (start start-elem)
                   `(let ((,start ,',p)
                          (,start-elem ,',elem))
-                     (handler-case
-                         (progn (match ,@vectors) t)
-                       (match-failed ()
-                         (setq ,',p ,start
-                               ,',elem ,start-elem) nil)))))
+                     (block match?-block
+                       (tagbody
+                          (match ,@vectors)
+                          (return-from match?-block t)
+                        :match-failed
+                          (setq ,',p ,start
+                                ,',elem ,start-elem))))))
               (match-i (&rest vectors)
                 `(match-i-case
                   ,@(loop for vec in vectors
@@ -353,7 +355,7 @@
                                  ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                        cases
                                        (append cases
-                                               '((otherwise (error 'match-failed))))))
+                                               '((otherwise (go :match-failed))))))
                              (when (eofp) (go :eof))))
               (match-i-case (&rest cases)
                             (check-match-cases cases)
@@ -362,7 +364,7 @@
                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                          cases
                                          (append cases
-                                                 '((otherwise (error 'match-failed))))))
+                                                 '((otherwise (go :match-failed))))))
                                (when (eofp) (go :eof)))))
            (block ,body-block
              (tagbody
@@ -370,6 +372,8 @@
                   (go :eof))
                 (setq ,elem (aref ,data ,p))
                 (return-from ,body-block (progn ,@body))
+              :match-failed
+                (error 'match-failed)
               :eof)))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
@@ -407,7 +411,7 @@
                                  ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                        cases
                                        (append cases
-                                               '((otherwise (error 'match-failed))))))
+                                               '((otherwise (go :match-failed))))))
                              (when (eofp) (go :eof))))
               (match-i-case (&rest cases)
                             (check-match-cases cases)
@@ -423,7 +427,7 @@
                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
                                          cases
                                          (append cases
-                                                 '((otherwise (error 'match-failed))))))
+                                                 '((otherwise (go :match-failed))))))
                                (when (eofp) (go :eof)))))
            (block ,body-block
              (tagbody
@@ -431,6 +435,8 @@
                   (go :eof))
                 (setq ,elem (aref ,data ,p))
                 (return-from ,body-block (progn ,@body))
+              :match-failed
+                (error 'match-failed)
               :eof)))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
