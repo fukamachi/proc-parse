@@ -307,10 +307,10 @@
                   `(let ((,start ,',p)
                          (,start-elem ,',elem))
                      (handler-case
-                         (match ,@vectors)
+                         (progn (match ,@vectors) t)
                        (match-failed ()
                          (setq ,',p ,start
-                               ,',elem ,start-elem))))))
+                               ,',elem ,start-elem) nil)))))
               (match-i (&rest vectors)
                 `(match-i-case
                   ,@(loop for vec in vectors
