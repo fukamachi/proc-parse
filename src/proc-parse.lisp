@@ -223,6 +223,14 @@
       elem
       (code-char elem)))
 
+(defmacro tagbody-with-match-failed (elem &body body)
+  (with-gensyms (block)
+    `(block ,block
+       (tagbody
+          (return-from ,block ,@body)
+        :match-failed
+          (error 'match-failed :elem ,elem)))))
+
 (defmacro parsing-macrolet ((elem data p end)
                             (&rest macros) &body body)
   `(macrolet ((advance (&optional (step 1))
@@ -298,17 +306,23 @@
                            ,@body)
                        (when (eofp)
                          (go :eof))))))
-              (match (&rest vectors)
-                `(match-case
+              (%match (&rest vectors)
+                `(%match-case
                   ,@(loop for vec in vectors
                           collect `(,vec))))
+              (match (&rest vectors)
+                `(block match-block
+                   (tagbody
+                      (return-from match-block (%match ,@vectors))
+                    :match-failed
+                      (error 'match-failed :elem ,',elem))))
               (match? (&rest vectors)
                 (with-gensyms (start start-elem)
                   `(let ((,start ,',p)
                          (,start-elem ,',elem))
                      (block match?-block
                        (tagbody
-                          (match ,@vectors)
+                          (%match ,@vectors)
                           (return-from match?-block t)
                         :match-failed
                           (setq ,',p ,start
@@ -348,32 +362,36 @@
                                               collect `(not (char= ,(cadr el) ,elem-var))
                                             else
                                               collect `(char= ,el ,elem-var))))
-              (match-case (&rest cases)
-                          (check-match-cases cases)
-                          `(prog1
-                               (vector-case ,',elem (,',data)
-                                 ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                       cases
-                                       (append cases
-                                               '((otherwise (go :match-failed))))))
-                             (when (eofp) (go :eof))))
-              (match-i-case (&rest cases)
-                            (check-match-cases cases)
-                            `(prog1
-                                 (vector-case ,',elem (,',data :case-insensitive t)
-                                   ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                         cases
-                                         (append cases
-                                                 '((otherwise (go :match-failed))))))
-                               (when (eofp) (go :eof)))))
+              (%match-case (&rest cases)
+                           (check-match-cases cases)
+                           `(prog1
+                                (vector-case ,',elem (,',data)
+                                  ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                        cases
+                                        (append cases
+                                                '((otherwise (go :match-failed))))))
+                              (when (eofp) (go :eof))))
+              (%match-i-case (&rest cases)
+                             (check-match-cases cases)
+                             `(prog1
+                                  (vector-case ,',elem (,',data :case-insensitive t)
+                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                          cases
+                                          (append cases
+                                                  '((otherwise (go :match-failed))))))
+                                (when (eofp) (go :eof))))
+              (match-case
+               (&rest cases)
+               `(tagbody-with-match-failed ,',elem (%match-case ,@cases)))
+              (match-i-case
+               (&rest cases)
+               `(tagbody-with-match-failed ,',elem (%match-i-case ,@cases))))
            (block ,body-block
              (tagbody
                 (when (eofp)
                   (go :eof))
                 (setq ,elem (aref ,data ,p))
                 (return-from ,body-block (progn ,@body))
-              :match-failed
-                (error 'match-failed)
               :eof)))))))
 
 (defmacro with-octets-parsing ((data &key start end) &body body)
@@ -397,38 +415,44 @@
                                               collect `(not (= ,(char-code (cadr el)) ,elem-var))
                                             else
                                               collect `(= ,(char-code el) ,elem-var))))
-              (match-case (&rest cases)
-                          (check-match-cases cases)
-                          (setf cases
-                                (loop for case in cases
-                                      if (stringp (car case))
-                                        collect (cons (babel:string-to-octets (car case))
-                                                      (cdr case))
-                                      else
-                                        collect case))
-                          `(prog1
-                               (vector-case ,',elem (,',data)
-                                 ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                       cases
-                                       (append cases
-                                               '((otherwise (go :match-failed))))))
-                             (when (eofp) (go :eof))))
-              (match-i-case (&rest cases)
-                            (check-match-cases cases)
-                            (setf cases
-                                  (loop for case in cases
-                                        if (stringp (car case))
-                                          collect (cons (babel:string-to-octets (car case))
-                                                        (cdr case))
-                                        else
-                                          collect case))
-                            `(prog1
-                                 (vector-case ,',elem (,',data :case-insensitive t)
-                                   ,@(if (find 'otherwise cases :key #'car :test #'eq)
-                                         cases
-                                         (append cases
-                                                 '((otherwise (go :match-failed))))))
-                               (when (eofp) (go :eof)))))
+              (%match-case (&rest cases)
+                           (check-match-cases cases)
+                           (setf cases
+                                 (loop for case in cases
+                                       if (stringp (car case))
+                                         collect (cons (babel:string-to-octets (car case))
+                                                       (cdr case))
+                                       else
+                                         collect case))
+                           `(prog1
+                                (vector-case ,',elem (,',data)
+                                  ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                        cases
+                                        (append cases
+                                                '((otherwise (go :match-failed))))))
+                              (when (eofp) (go :eof))))
+              (%match-i-case (&rest cases)
+                             (check-match-cases cases)
+                             (setf cases
+                                   (loop for case in cases
+                                         if (stringp (car case))
+                                           collect (cons (babel:string-to-octets (car case))
+                                                         (cdr case))
+                                         else
+                                           collect case))
+                             `(prog1
+                                  (vector-case ,',elem (,',data :case-insensitive t)
+                                    ,@(if (find 'otherwise cases :key #'car :test #'eq)
+                                          cases
+                                          (append cases
+                                                  '((otherwise (go :match-failed))))))
+                                (when (eofp) (go :eof))))
+              (match-case
+               (&rest cases)
+               `(tagbody-with-match-failed ,',elem (%match-case ,@cases)))
+              (match-i-case
+               (&rest cases)
+               `(tagbody-with-match-failed ,',elem (%match-i-case ,@cases))))
            (block ,body-block
              (tagbody
                 (when (eofp)
@@ -436,7 +460,7 @@
                 (setq ,elem (aref ,data ,p))
                 (return-from ,body-block (progn ,@body))
               :match-failed
-                (error 'match-failed)
+                (error 'match-failed :elem ,elem)
               :eof)))))))
 
 (defmacro with-vector-parsing ((data &key (start 0) end) &body body &environment env)
