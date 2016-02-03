@@ -7,7 +7,7 @@
                           :skip))
 (in-package :proc-parse-test)
 
-(plan 15)
+(plan 16)
 
 (defmacro with-vector-parsing-test ((target) &body body)
   `(progn
@@ -264,5 +264,11 @@
          ("bc" 0))
         0
         "can return the value the body form of the matched case returns even thogh eof.")))
+
+(subtest "declaration of types"
+  (let ((str "LISP"))
+    (declare (type simple-string str))
+    (with-vector-parsing (str)
+      (is (current) #\L))))
 
 (finalize)
