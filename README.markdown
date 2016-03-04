@@ -116,9 +116,9 @@ I believe we don't have to give up speed for the readability while we use Common
 
 ```Lisp
 (with-vector-parsing ("hello")
-  (match "hel")
-  (print (pos)) ; #\3
-  (print (peek))) ; #\o
+  (match "hell")
+  (print (pos)) ; #\4
+  (print (peek :eof-value 'yes))) ; YES
 ```
 
 ### pos
