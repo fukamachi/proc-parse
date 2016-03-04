@@ -1,11 +1,12 @@
 (in-package :cl-user)
 (defpackage proc-parse
   (:use :cl)
-  #+(or sbcl openmcl cmu allegro)
+  #+(or sbcl openmcl cmu allegro lispworks)
   (:import-from #+sbcl :sb-cltl2
                 #+openmcl :ccl
                 #+cmu :ext
                 #+allegro :sys
+                #+lispworks :hcl
                 :variable-information)
   (:import-from :alexandria
                 :with-gensyms
@@ -17,6 +18,8 @@
            :with-octets-parsing
            :eofp
            :current
+           :peek
+           :eof-value
            :pos
            :advance
            :advance*
@@ -53,10 +56,10 @@
   (cond
     ((consp chars)
      `(or ,@(loop for ch in chars
-                  if (characterp ch)
-                    collect `(char= ,var ,ch)
-                  else
-                    collect `(= ,var ,ch))))
+               if (characterp ch)
+               collect `(char= ,var ,ch)
+               else
+               collect `(= ,var ,ch))))
     ((eq chars 'otherwise)
      t)
     (t (if (characterp chars)
@@ -76,18 +79,18 @@
        ,@(cdr (first cases))))
     (t
      (let ((tags (make-array (length cases) :initial-contents (loop repeat (length cases)
-                                                                    collect (gensym))))
+                                                                 collect (gensym))))
            (end (gensym "END")))
        `(,@(loop for (chars . body) in cases
-                 for i from 0
-                 collect `(when ,(convert-case-conditions var chars)
-                            (go ,(aref tags i))))
-         ,@(loop for case in cases
-                 for i from 0
-                 append `(,(aref tags i)
+              for i from 0
+              collect `(when ,(convert-case-conditions var chars)
+                         (go ,(aref tags i))))
+           ,@(loop for case in cases
+                for i from 0
+                append `(,(aref tags i)
                           ,@(cdr case)
                           (go ,end)))
-         ,end)))))
+           ,end)))))
 
 (defmacro vector-case (elem-var vec-and-options &body cases)
   (destructuring-bind (vec &key case-insensitive)
@@ -136,21 +139,21 @@
                                       (next-case
                                        (push
                                         `(,(case-candidates el)
-                                          (unless (advance*)
-                                            ,(if (= (length (caar cases)) (1+ i))
-                                                 `(progn ,@(cdr (car cases))
-                                                         (go ,end-tag))
-                                                 `(go :eof)))
-                                          ,@(apply #'typed-case-tagbodies elem-var
-                                                   (append
-                                                    next-case
-                                                    `((otherwise (go ,otherwise))))))
+                                           (unless (advance*)
+                                             ,(if (= (length (caar cases)) (1+ i))
+                                                  `(progn ,@(cdr (car cases))
+                                                          (go ,end-tag))
+                                                  `(go :eof)))
+                                           ,@(apply #'typed-case-tagbodies elem-var
+                                                    (append
+                                                     next-case
+                                                     `((otherwise (go ,otherwise))))))
                                         res-cases))
                                       (t
                                        (push `(,(case-candidates el)
-                                               (advance*)
-                                               (return-from ,vector-case-block
-                                                 (progn ,@(cdr (car cases)))))
+                                                (advance*)
+                                                (return-from ,vector-case-block
+                                                  (progn ,@(cdr (car cases)))))
                                              res-cases)))))
                                 map)
                        res-cases)))))
@@ -167,9 +170,9 @@
                 (go ,end-tag)
                 ,otherwise
                 ,@(when otherwise-case
-                    `(unless (eofp)
-                       (return-from ,vector-case-block
-                         (progn ,@(cdr otherwise-case)))))
+                        `(unless (eofp)
+                           (return-from ,vector-case-block
+                             (progn ,@(cdr otherwise-case)))))
                 ,end-tag)))))))
 
 (defun variable-type (var &optional env)
@@ -178,9 +181,9 @@
     ((constantp var) (type-of var))
     #+(or sbcl openmcl cmu allegro)
     ((and (symbolp var)
-	  #+allegro (cadr (assoc 'type (nth-value 2 (variable-information var env))))
+          #+allegro (cadr (assoc 'type (nth-value 2 (variable-information var env))))
           #-allegro (cdr (assoc 'type (nth-value 2 (variable-information var env))))
-	  ))
+          ))
     ((and (listp var)
           (eq (car var) 'the)
           (cadr var)))))
@@ -223,7 +226,7 @@
 (defun ensure-char-elem (elem)
   (if (characterp elem)
       elem
-      (code-char elem)))
+    (code-char elem)))
 
 (defmacro tagbody-with-match-failed (elem &body body)
   (with-gensyms (block)
@@ -276,9 +279,9 @@
                 `(locally (declare (optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
                    (unless (eofp)
                      (loop
-                       (unless (skip-conditions ,',elem ,elems)
-                         (return))
-                       (or (advance*) (go :eof))))))
+                        (unless (skip-conditions ,',elem ,elems)
+                          (return))
+                        (or (advance*) (go :eof))))))
               (skip+ (&rest elems)
                 `(progn
                    (skip ,@elems)
@@ -292,12 +295,12 @@
                 `(loop until ,(if (symbolp fn)
                                   `(,fn (get-elem ,',elem))
                                   `(funcall ,fn (get-elem ,',elem)))
-                       do (or (advance*) (go :eof))))
+                    do (or (advance*) (go :eof))))
               (skip-while (fn)
                 `(loop while ,(if (symbolp fn)
                                   `(,fn (get-elem ,',elem))
                                   `(funcall ,fn (get-elem ,',elem)))
-                       do (or (advance*) (go :eof))))
+                    do (or (advance*) (go :eof))))
               (bind ((symb &body bind-forms) &body body)
                 (with-gensyms (start)
                   `(let ((,start ,',p))
@@ -312,7 +315,7 @@
               (%match (&rest vectors)
                 `(%match-case
                   ,@(loop for vec in vectors
-                          collect `(,vec))))
+                       collect `(,vec))))
               (match (&rest vectors)
                 `(block match-block
                    (tagbody
@@ -333,13 +336,20 @@
               (match-i (&rest vectors)
                 `(match-i-case
                   ,@(loop for vec in vectors
-                          collect `(,vec))))
+                       collect `(,vec))))
               ,@macros)
      #+sbcl (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
      (labels ((eofp ()
                 (declare (optimize (speed 3) (safety 0) (debug 0)))
                 (<= ,end ,p))
               (current () (get-elem ,elem))
+              (peek (&key eof-value)
+                (declare (optimize (speed 3) (safety 0) (debug 0)))
+                (let ((len (length ,data)))
+                  (declare (type fixnum len))
+                  (if (or (eofp) (>= ,p (- ,end 1)) (= ,p (- len 1)))
+                      eof-value
+                      (aref ,data (+ 1 ,p)))))
               (pos () (the fixnum ,p)))
        (declare (inline eofp current pos))
        ,@body)))
@@ -360,11 +370,11 @@
          (parsing-macrolet (,elem ,data ,p ,g-end)
              ((skip-conditions (elem-var elems)
                                `(or ,@(loop for el in elems
-                                            if (and (consp el)
-                                                    (eq (car el) 'not))
-                                              collect `(not (char= ,(cadr el) ,elem-var))
-                                            else
-                                              collect `(char= ,el ,elem-var))))
+                                         if (and (consp el)
+                                                 (eq (car el) 'not))
+                                         collect `(not (char= ,(cadr el) ,elem-var))
+                                         else
+                                         collect `(char= ,el ,elem-var))))
               (%match-case (&rest cases)
                            (check-match-cases cases)
                            `(prog1
@@ -413,20 +423,20 @@
          (parsing-macrolet (,elem ,data ,p ,g-end)
              ((skip-conditions (elem-var elems)
                                `(or ,@(loop for el in elems
-                                            if (and (consp el)
-                                                    (eq (car el) 'not))
-                                              collect `(not (= ,(char-code (cadr el)) ,elem-var))
-                                            else
-                                              collect `(= ,(char-code el) ,elem-var))))
+                                         if (and (consp el)
+                                                 (eq (car el) 'not))
+                                         collect `(not (= ,(char-code (cadr el)) ,elem-var))
+                                         else
+                                         collect `(= ,(char-code el) ,elem-var))))
               (%match-case (&rest cases)
                            (check-match-cases cases)
                            (setf cases
                                  (loop for case in cases
-                                       if (stringp (car case))
-                                         collect (cons (babel:string-to-octets (car case))
-                                                       (cdr case))
-                                       else
-                                         collect case))
+                                    if (stringp (car case))
+                                    collect (cons (babel:string-to-octets (car case))
+                                                  (cdr case))
+                                    else
+                                    collect case))
                            `(prog1
                                 (vector-case ,',elem (,',data)
                                   ,@(if (find 'otherwise cases :key #'car :test #'eq)
@@ -438,11 +448,11 @@
                              (check-match-cases cases)
                              (setf cases
                                    (loop for case in cases
-                                         if (stringp (car case))
-                                           collect (cons (babel:string-to-octets (car case))
-                                                         (cdr case))
-                                         else
-                                           collect case))
+                                      if (stringp (car case))
+                                      collect (cons (babel:string-to-octets (car case))
+                                                    (cdr case))
+                                      else
+                                      collect case))
                              `(prog1
                                   (vector-case ,',elem (,',data :case-insensitive t)
                                     ,@(if (find 'otherwise cases :key #'car :test #'eq)
