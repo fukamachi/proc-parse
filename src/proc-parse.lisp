@@ -1,11 +1,12 @@
 (in-package :cl-user)
 (defpackage proc-parse
   (:use :cl)
-  #+(or sbcl openmcl cmu allegro)
+  #+(or sbcl openmcl cmu allegro lispworks)
   (:import-from #+sbcl :sb-cltl2
                 #+openmcl :ccl
                 #+cmu :ext
                 #+allegro :sys
+                #+lispworks :hcl
                 :variable-information)
   (:import-from :alexandria
                 :with-gensyms
@@ -17,6 +18,8 @@
            :with-octets-parsing
            :eofp
            :current
+           :peek
+           :eof-value
            :pos
            :advance
            :advance*
@@ -339,6 +342,13 @@
                 (declare (optimize (speed 3) (safety 0) (debug 0)))
                 (<= ,end ,p))
               (current () (get-elem ,elem))
+              (peek (&key eof-value)
+                (declare (optimize (speed 3) (safety 0) (debug 0)))
+                (let ((len (length ,data)))
+                  (declare (type fixnum len))
+                  (if (or (eofp) (>= ,p (- ,end 1)) (= ,p (- len 1)))
+                      eof-value
+                      (aref ,data (+ 1 ,p)))))
               (pos () (the fixnum ,p)))
        (declare (inline eofp current pos))
        ,@body)))

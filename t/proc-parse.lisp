@@ -7,7 +7,7 @@
                           :skip))
 (in-package :proc-parse-test)
 
-(plan 16)
+(plan 17)
 
 (defmacro with-vector-parsing-test ((target) &body body)
   `(progn
@@ -29,6 +29,31 @@
   (with-vector-parsing-test ("a")
     (is-current #\a
                 "can return the current character.")))
+
+(defmacro test-peek ((target) &body body)
+  `(progn
+     (subtest "with-vector-parsing"
+       (with-vector-parsing (,target) ,@body))
+     (subtest "with-string-parsing"
+       (with-string-parsing (,target) ,@body))
+     (subtest "with-octets-parsing"
+       (with-octets-parsing (,(babel:string-to-octets target)) ,@body))))
+
+(subtest "peek"
+  (test-peek ("a") (is (peek) nil))
+  (test-peek ("a") (is (peek :eof-value 'yes) 'yes))
+  (subtest "with-vector-parsing"
+    (with-vector-parsing ("abcd")
+      (advance)
+      (is (peek) #\c)))
+  (subtest "with-vector-parsing"
+    (with-vector-parsing ("abcdefg" :end 5)
+      (match "abc")
+      (is (peek :eof-value 'yes) #\e)))
+  (subtest "with-vector-parsing"
+    (with-vector-parsing ("abcdefg" :end 5)
+      (match "abcd")
+      (is (peek :eof-value 'yes) 'yes))))
 
 (subtest "advance"
   (with-vector-parsing-test ("ab")
