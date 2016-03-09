@@ -101,6 +101,26 @@ I believe we don't have to give up speed for the readability while we use Common
   (print (current))) ; #\e
 ```
 
+### peek
+
+- can peek next character from the current position
+
+```Lisp
+(with-vector-parsing ("hello")
+  (print (current)) ; #\h
+  (print (peek)) ; #\e
+  (print (current))) ; #\h
+```
+  
+- and you can specify the eof-value
+
+```Lisp
+(with-vector-parsing ("hello")
+  (match "hell")
+  (print (pos)) ; #\4
+  (print (peek :eof-value 'yes))) ; YES
+```
+
 ### pos
 
 - can return the current position.
